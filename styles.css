@@ -1,0 +1,506 @@
+/* ---------- Design tokens ---------- */
+:root {
+  --bg-1: #17181c;
+  --bg-2: #1e2025;
+  --panel: #24262c;
+  --panel-raised: #2a2c33;
+  --hairline: #33353c;
+  --text: #ece9e2;
+  --text-dim: #9a9a9e;
+  --brass: #c9a227;
+  --brass-dim: #7a6a3a;
+  --danger: #b5544a;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", Consolas, Menlo, monospace;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root[data-theme="light"] {
+  --bg-1: #efece4;
+  --bg-2: #f3f0e8;
+  --panel: #f7f5ee;
+  --panel-raised: #fbf9f3;
+  --hairline: #ddd6c4;
+  --text: #2a2620;
+  --text-dim: #7a7364;
+  --brass: #9c7a1a;
+  --brass-dim: #cbb98a;
+  --shadow: 0 10px 26px rgba(120, 100, 50, 0.14), 0 2px 6px rgba(120, 100, 50, 0.10);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg-1: #efece4;
+    --bg-2: #f3f0e8;
+    --panel: #f7f5ee;
+    --panel-raised: #fbf9f3;
+    --hairline: #ddd6c4;
+    --text: #2a2620;
+    --text-dim: #7a7364;
+    --brass: #9c7a1a;
+    --brass-dim: #cbb98a;
+    --shadow: 0 10px 26px rgba(120, 100, 50, 0.14), 0 2px 6px rgba(120, 100, 50, 0.10);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 50% -10%, var(--bg-2) 0%, var(--bg-1) 65%);
+  color: var(--text);
+  font-family: var(--font-body);
+  padding: 32px 16px 56px;
+  display: flex;
+  justify-content: center;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--brass-dim);
+  color: var(--bg-1);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* ---------- Theme toggle ---------- */
+.theme-toggle {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--brass);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+  transition: transform 0.15s ease;
+  z-index: 10;
+}
+.theme-toggle:hover { transform: scale(1.06); }
+.theme-toggle:active { transform: scale(0.94); }
+
+/* ---------- Console panel ---------- */
+.console {
+  width: 100%;
+  max-width: 620px;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 28px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.console__header {
+  text-align: center;
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+  margin: 0;
+  color: var(--text);
+}
+
+.brand__sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ---------- Mode tabs ---------- */
+.modes {
+  display: flex;
+  gap: 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 5px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 9px 8px;
+  border: none;
+  border-radius: calc(var(--radius-md) - 5px);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mode-btn[aria-selected="true"] {
+  background: var(--panel-raised);
+  color: var(--brass);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.mode-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ---------- Task input ---------- */
+.task-input-wrap {
+  display: flex;
+}
+
+.task-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--bg-1);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.task-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* ---------- Dial ---------- */
+.dial-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  margin: 4px auto;
+  aspect-ratio: 1 / 1;
+}
+
+.dial {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.dial__track {
+  fill: none;
+  stroke: var(--hairline);
+  stroke-width: 14;
+}
+
+.dial__progress {
+  fill: none;
+  stroke: var(--brass);
+  stroke-width: 14;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(201, 162, 39, 0.45));
+  transition: stroke-dashoffset 0.25s linear;
+}
+
+.dial__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.dial__time {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: clamp(38px, 11vw, 54px);
+  letter-spacing: 0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dial__label {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+/* ---------- Controls ---------- */
+.controls {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btn {
+  min-width: 120px;
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--panel-raised);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:hover { background: var(--bg-1); }
+.btn:active { transform: scale(0.97); }
+
+.btn--primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #201a08;
+  box-shadow: 0 0 14px rgba(201, 162, 39, 0.25);
+}
+
+.btn--primary:hover {
+  filter: brightness(1.06);
+  background: var(--brass);
+}
+
+/* ---------- Stats row ---------- */
+.stats-row {
+  display: flex;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.stat {
+  flex: 1;
+  text-align: center;
+  padding: 14px 8px;
+  background: var(--bg-1);
+}
+
+.stat + .stat {
+  border-left: 1px solid var(--hairline);
+}
+
+.stat__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__label {
+  margin-top: 4px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ---------- XP panel ---------- */
+.xp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.xp-panel__head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.xp-panel__head span:last-child {
+  font-family: var(--font-mono);
+  color: var(--text);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.xp-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+}
+
+.xp-bar__fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--brass-dim), var(--brass));
+  border-radius: inherit;
+  box-shadow: 0 0 8px rgba(201, 162, 39, 0.4);
+  transition: width 0.4s ease;
+}
+
+/* ---------- Panels (badges / log) ---------- */
+.panel {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  padding: 16px;
+}
+
+.panel__title {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+/* ---------- Badges ---------- */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 72px;
+  text-align: center;
+}
+
+.badge__medal {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: radial-gradient(circle at 35% 30%, var(--panel-raised), var(--bg-1));
+  border: 2px solid var(--hairline);
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition: filter 0.3s ease, opacity 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.badge.is-earned .badge__medal {
+  filter: none;
+  opacity: 1;
+  border-color: var(--brass);
+  box-shadow: 0 0 12px rgba(201, 162, 39, 0.5);
+}
+
+.badge__label {
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--text-dim);
+}
+
+.badge.is-earned .badge__label {
+  color: var(--text);
+}
+
+/* ---------- Session log ---------- */
+.log {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.log__empty {
+  margin: 8px 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.log-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+}
+
+.log-entry__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.log-entry__task {
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-entry__time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.log-entry__xp {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--brass);
+  white-space: nowrap;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 420px) {
+  .console {
+    padding: 20px 14px 26px;
+    gap: 18px;
+  }
+  .btn {
+    min-width: 0;
+    flex: 1;
+  }
+  .badge {
+    width: 62px;
+  }
+  .badge__medal {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+}

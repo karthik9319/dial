@@ -1,0 +1,31 @@
+{
+  "name": "dial",
+  "version": "1.0.0",
+  "description": "Dial — a gamified Pomodoro focus console (Electron wrapper)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.0"
+  },
+  "build": {
+    "appId": "com.dial.focusconsole",
+    "productName": "Dial",
+    "files": [
+      "main.js",
+      "preload.js",
+      "../index.html",
+      "../styles.css",
+      "../app.js"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    }
+  }
+}

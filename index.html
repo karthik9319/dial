@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dial — Focus Console</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2242%22 fill=%22%2317181c%22 stroke=%22%23c9a227%22 stroke-width=%226%22/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+  <span class="theme-toggle__icon" aria-hidden="true">◐</span>
+</button>
+
+<main class="console">
+
+  <header class="console__header">
+    <h1 class="brand">DIAL</h1>
+    <p class="brand__sub">focus console</p>
+  </header>
+
+  <section class="modes" role="tablist" aria-label="Timer mode">
+    <button class="mode-btn" data-mode="focus" role="tab" aria-selected="true">Focus</button>
+    <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short Break</button>
+    <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long Break</button>
+  </section>
+
+  <div class="task-input-wrap">
+    <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="What are you focusing on?" autocomplete="off">
+  </div>
+
+  <section class="dial-wrap">
+    <svg class="dial" viewBox="0 0 300 300" aria-hidden="true">
+      <circle class="dial__track" cx="150" cy="150" r="130" />
+      <circle class="dial__progress" id="dialProgress" cx="150" cy="150" r="130" />
+    </svg>
+    <div class="dial__center">
+      <div class="dial__time" id="timeDisplay">25:00</div>
+      <div class="dial__label" id="modeLabel">Focus</div>
+    </div>
+  </section>
+
+  <section class="controls">
+    <button id="startPauseBtn" class="btn btn--primary" type="button">Start</button>
+    <button id="resetBtn" class="btn" type="button">Reset</button>
+  </section>
+
+  <section class="stats-row">
+    <div class="stat">
+      <div class="stat__value" id="statStreak">0</div>
+      <div class="stat__label">Streak</div>
+    </div>
+    <div class="stat">
+      <div class="stat__value" id="statToday">0</div>
+      <div class="stat__label">Today</div>
+    </div>
+    <div class="stat">
+      <div class="stat__value" id="statLevel">1</div>
+      <div class="stat__label">Level</div>
+    </div>
+  </section>
+
+  <section class="xp-panel">
+    <div class="xp-panel__head">
+      <span>XP</span>
+      <span id="xpText">0 / 100</span>
+    </div>
+    <div class="xp-bar">
+      <div class="xp-bar__fill" id="xpFill"></div>
+    </div>
+  </section>
+
+  <section class="panel badges-panel">
+    <h2 class="panel__title">Badges</h2>
+    <div class="badges" id="badgesRow"></div>
+  </section>
+
+  <section class="panel log-panel">
+    <h2 class="panel__title">Session Log</h2>
+    <div class="log" id="sessionLog">
+      <p class="log__empty" id="logEmpty">No sessions logged yet. Start your first focus session.</p>
+    </div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

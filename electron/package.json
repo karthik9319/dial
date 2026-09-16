@@ -21,6 +21,7 @@
       "preload.js",
       "../index.html",
       "../styles.css",
+      "../logic.js",
       "../app.js"
     ],
     "mac": {

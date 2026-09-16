@@ -32,6 +32,17 @@ the app is fully functional offline with system-font fallbacks if there's no net
 - **Badges**: First Sprint, 5-Day Streak, 10-Day Streak, 6 in One Day, Level 5, Before 7am, and
   50 Sessions — unlock automatically as you hit each milestone.
 
+## Running the test suite
+
+The XP/level, streak, badge-unlock, and formatting logic lives in `logic.js` as
+plain, dependency-free functions (loaded as `window.DialLogic` in the browser,
+`require`-able from Node). It's covered by a suite using Node's built-in test
+runner, so there's nothing to install:
+
+```
+node --test
+```
+
 ## Wrapping as a native macOS app (optional, via Electron)
 
 The `electron/` folder contains a minimal wrapper that loads the same `index.html`/`styles.css`/

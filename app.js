@@ -1,42 +1,29 @@
 (() => {
   "use strict";
 
+  const {
+    DURATIONS,
+    MODE_LABELS,
+    BADGE_DEFS,
+    todayStr,
+    xpForLevel,
+    applyXp,
+    focusSessionXp,
+    nextStreak,
+    nextBreakMode,
+    evaluateBadges,
+    formatTime,
+    capSessions,
+  } = window.DialLogic;
+
   /* ---------------- Constants ---------------- */
   const STORAGE_KEY = "dial:state:v1";
-
-  const DURATIONS = {
-    focus: 25 * 60,
-    short: 5 * 60,
-    long: 15 * 60,
-  };
-
-  const MODE_LABELS = {
-    focus: "Focus",
-    short: "Short Break",
-    long: "Long Break",
-  };
-
-  const BADGE_DEFS = [
-    { id: "first_sprint", label: "First Sprint", icon: "①" },
-    { id: "streak_5", label: "5-Day Streak", icon: "🔥" },
-    { id: "streak_10", label: "10-Day Streak", icon: "⚡" },
-    { id: "six_in_day", label: "6 in One Day", icon: "☰" },
-    { id: "level_5", label: "Level 5", icon: "★" },
-    { id: "before_7am", label: "Before 7am", icon: "☀" },
-    { id: "fifty_sessions", label: "50 Sessions", icon: "◈" },
-  ];
+  const TIMER_KEY = "dial:timer:v1";
 
   const RING_RADIUS = 130;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
-  /* ---------------- Persistence ---------------- */
-  function todayStr(d = new Date()) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
+  /* ---------------- Persistence: app state ---------------- */
   function defaultState() {
     return {
       xp: 0,
@@ -64,6 +51,7 @@
     }
     const state = Object.assign(defaultState(), stored || {});
     state.badges = Object.assign({}, stored && stored.badges);
+    state.sessions = capSessions(Array.isArray(state.sessions) ? state.sessions : []);
 
     const now = todayStr();
     if (state.today !== now) {
@@ -81,6 +69,42 @@
     }
   }
 
+  /* ---------------- Persistence: in-flight timer ---------------- */
+  function loadTimerSnapshot() {
+    try {
+      const raw = localStorage.getItem(TIMER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveTimerSnapshot() {
+    try {
+      localStorage.setItem(
+        TIMER_KEY,
+        JSON.stringify({
+          mode,
+          endTime,
+          remaining,
+          running,
+          sessionStart: sessionStart ? sessionStart.toISOString() : null,
+          taskDraft: el.taskInput.value,
+        })
+      );
+    } catch (e) {
+      /* storage unavailable — in-flight timer just won't survive a reload */
+    }
+  }
+
+  function clearTimerSnapshot() {
+    try {
+      localStorage.removeItem(TIMER_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   /* ---------------- App state ---------------- */
   let state = loadState();
 
@@ -91,6 +115,35 @@
   let endTime = null;
   let tickHandle = null;
   let sessionStart = null;
+  let pendingTaskDraft = "";
+
+  /* Resume an in-flight timer left over from before a reload/close, if any. */
+  (function restoreTimer() {
+    const snap = loadTimerSnapshot();
+    if (!snap || !DURATIONS[snap.mode]) return;
+
+    mode = snap.mode;
+    totalDuration = DURATIONS[mode];
+    sessionStart = snap.sessionStart ? new Date(snap.sessionStart) : null;
+    pendingTaskDraft = snap.taskDraft || "";
+
+    if (snap.running && typeof snap.endTime === "number") {
+      const liveRemaining = (snap.endTime - Date.now()) / 1000;
+      if (liveRemaining > 0) {
+        remaining = liveRemaining;
+        endTime = snap.endTime;
+        running = true;
+      } else {
+        /* Session finished while the app was closed — we can't verify it was
+           actually watched through, so don't retroactively award XP or play
+           a beep. Just present a fresh timer for the mode. */
+        remaining = totalDuration;
+        clearTimerSnapshot();
+      }
+    } else if (typeof snap.remaining === "number") {
+      remaining = Math.min(Math.max(snap.remaining, 0), totalDuration);
+    }
+  })();
 
   /* ---------------- DOM refs ---------------- */
   const el = {
@@ -109,10 +162,15 @@
     xpFill: document.getElementById("xpFill"),
     badgesRow: document.getElementById("badgesRow"),
     sessionLog: document.getElementById("sessionLog"),
-    logEmpty: document.getElementById("logEmpty"),
+    announcer: document.getElementById("announcer"),
   };
 
   el.dialProgress.style.strokeDasharray = `${RING_CIRCUMFERENCE}`;
+  if (pendingTaskDraft) el.taskInput.value = pendingTaskDraft;
+
+  if (running) {
+    tickHandle = setInterval(tick, 250);
+  }
 
   /* ---------------- Theme ---------------- */
   function applyTheme() {
@@ -135,6 +193,16 @@
   });
 
   applyTheme();
+
+  /* ---------------- Announcer (screen readers) ---------------- */
+  function announce(message) {
+    if (!el.announcer) return;
+    el.announcer.textContent = "";
+    /* Re-set on the next tick so repeated identical messages are still announced. */
+    window.setTimeout(() => {
+      el.announcer.textContent = message;
+    }, 30);
+  }
 
   /* ---------------- Audio (beep) ---------------- */
   let audioCtx = null;
@@ -161,54 +229,7 @@
     }
   }
 
-  /* ---------------- Level / XP math ---------------- */
-  function xpForLevel(level) {
-    return 100 + (level - 1) * 40;
-  }
-
-  function addXp(amount) {
-    state.xp += amount;
-    while (state.xp >= xpForLevel(state.level)) {
-      state.xp -= xpForLevel(state.level);
-      state.level += 1;
-    }
-  }
-
-  /* ---------------- Streak ---------------- */
-  function daysBetween(a, b) {
-    const [ay, am, ad] = a.split("-").map(Number);
-    const [by, bm, bd] = b.split("-").map(Number);
-    const da = new Date(ay, am - 1, ad);
-    const db = new Date(by, bm - 1, bd);
-    return Math.round((db - da) / 86400000);
-  }
-
-  function registerStreak() {
-    const now = todayStr();
-    if (state.lastSessionDate === now) {
-      /* already counted today, no change */
-    } else if (state.lastSessionDate === null) {
-      state.currentStreak = 1;
-    } else {
-      const gap = daysBetween(state.lastSessionDate, now);
-      state.currentStreak = gap === 1 ? state.currentStreak + 1 : 1;
-    }
-    state.lastSessionDate = now;
-    state.longestStreak = Math.max(state.longestStreak, state.currentStreak);
-  }
-
   /* ---------------- Badges ---------------- */
-  function evaluateBadges(ctx) {
-    const b = state.badges;
-    if (state.totalSessions >= 1) b.first_sprint = true;
-    if (state.longestStreak >= 5) b.streak_5 = true;
-    if (state.longestStreak >= 10) b.streak_10 = true;
-    if (state.todayCount >= 6) b.six_in_day = true;
-    if (state.level >= 5) b.level_5 = true;
-    if (ctx && ctx.startHour < 7) b.before_7am = true;
-    if (state.totalSessions >= 50) b.fifty_sessions = true;
-  }
-
   function renderBadges() {
     el.badgesRow.innerHTML = "";
     BADGE_DEFS.forEach((def) => {
@@ -235,11 +256,12 @@
       time: new Date().toISOString(),
       xp: xpEarned,
     });
+    state.sessions = capSessions(state.sessions);
   }
 
   function renderLog() {
+    el.sessionLog.innerHTML = "";
     if (!state.sessions.length) {
-      el.sessionLog.innerHTML = "";
       const empty = document.createElement("p");
       empty.className = "log__empty";
       empty.id = "logEmpty";
@@ -247,7 +269,6 @@
       el.sessionLog.appendChild(empty);
       return;
     }
-    el.sessionLog.innerHTML = "";
     state.sessions.slice(0, 100).forEach((entry) => {
       const row = document.createElement("div");
       row.className = "log-entry";
@@ -283,13 +304,6 @@
   }
 
   /* ---------------- Rendering ---------------- */
-  function formatTime(seconds) {
-    const s = Math.max(0, Math.ceil(seconds));
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-  }
-
   function renderTimer() {
     el.timeDisplay.textContent = formatTime(remaining);
     el.modeLabel.textContent = MODE_LABELS[mode];
@@ -337,6 +351,7 @@
     sessionStart = null;
     clearTick();
     saveState(state);
+    clearTimerSnapshot();
     renderAll();
   }
 
@@ -368,6 +383,7 @@
     tickHandle = setInterval(tick, 250);
     renderTimer();
     renderModeButtons();
+    saveTimerSnapshot();
   }
 
   function pause() {
@@ -377,6 +393,7 @@
     clearTick();
     renderTimer();
     renderModeButtons();
+    saveTimerSnapshot();
   }
 
   function reset() {
@@ -387,6 +404,7 @@
     sessionStart = null;
     renderTimer();
     renderModeButtons();
+    clearTimerSnapshot();
   }
 
   function ensureTodayFresh() {
@@ -401,34 +419,46 @@
     running = false;
     clearTick();
     playBeep();
+    clearTimerSnapshot();
 
     const wasFocus = mode === "focus";
     const startedAt = sessionStart || new Date();
 
     if (wasFocus) {
       ensureTodayFresh();
-      registerStreak();
+      state.currentStreak = nextStreak(state.lastSessionDate, state.currentStreak, todayStr());
+      state.lastSessionDate = todayStr();
+      state.longestStreak = Math.max(state.longestStreak, state.currentStreak);
       state.todayCount += 1;
       state.totalSessions += 1;
 
-      const streakBonus = Math.min(state.currentStreak * 2, 20);
-      const xpEarned = 20 + streakBonus;
-      addXp(xpEarned);
+      const xpEarned = focusSessionXp(state.currentStreak);
+      const applied = applyXp(state.xp, state.level, xpEarned);
+      state.xp = applied.xp;
+      state.level = applied.level;
 
       const taskName = el.taskInput.value.trim().slice(0, 60);
       addLogEntry(taskName, xpEarned);
 
-      evaluateBadges({ startHour: startedAt.getHours() });
+      state.badges = evaluateBadges(state.badges, {
+        totalSessions: state.totalSessions,
+        longestStreak: state.longestStreak,
+        todayCount: state.todayCount,
+        level: state.level,
+        startHour: startedAt.getHours(),
+      });
 
       el.taskInput.value = "";
 
-      const nextMode = state.totalSessions % 4 === 0 ? "long" : "short";
+      const nextMode = nextBreakMode(state.totalSessions);
       saveState(state);
       renderAll();
+      announce(`Focus session complete. ${xpEarned} XP earned. ${MODE_LABELS[nextMode]} starting.`);
       setMode(nextMode, { force: true });
     } else {
       saveState(state);
       renderAll();
+      announce(`${MODE_LABELS[mode]} complete. Back to Focus.`);
       setMode("focus", { force: true });
     }
   }
@@ -449,6 +479,7 @@
     if (el.taskInput.value.length > 60) {
       el.taskInput.value = el.taskInput.value.slice(0, 60);
     }
+    if (remaining !== totalDuration || running) saveTimerSnapshot();
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -456,6 +487,16 @@
       tick();
     }
   });
+
+  window.addEventListener("beforeunload", () => {
+    if (running || remaining !== totalDuration) saveTimerSnapshot();
+  });
+
+  /* Keep the persisted timer snapshot fresh while running, in case the tab
+     is closed without a clean beforeunload (some mobile browsers). */
+  setInterval(() => {
+    if (running) saveTimerSnapshot();
+  }, 5000);
 
   /* ---------------- Init ---------------- */
   ensureTodayFresh();

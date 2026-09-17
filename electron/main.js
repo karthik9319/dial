@@ -1,14 +1,18 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
 
+const ICON_PATH = path.join(__dirname, "build", "icon.png");
+
 function createWindow() {
   const win = new BrowserWindow({
-    width: 720,
-    height: 900,
-    minWidth: 380,
-    minHeight: 640,
+    width: 380,
+    height: 720,
+    minWidth: 320,
+    minHeight: 560,
+    maxWidth: 460,
     backgroundColor: "#17181c",
     title: "Dial",
+    icon: ICON_PATH,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -20,6 +24,12 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  /* macOS dev runs (`electron .`) ignore BrowserWindow's `icon` for the Dock —
+     only a packaged .app picks up build.mac.icon, so set it explicitly here. */
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(ICON_PATH);
+  }
+
   createWindow();
 
   app.on("activate", () => {

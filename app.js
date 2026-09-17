@@ -14,7 +14,14 @@
     evaluateBadges,
     formatTime,
     capSessions,
+    clampMinutes,
+    capTodos,
+    buildTaskSuggestions,
   } = window.DialLogic;
+
+  const CUSTOM_MIN_MINUTES = 1;
+  const CUSTOM_MAX_MINUTES = 120;
+  const DEFAULT_CUSTOM_MINUTES = 10;
 
   /* ---------------- Constants ---------------- */
   const STORAGE_KEY = "dial:state:v1";
@@ -36,6 +43,8 @@
       totalSessions: 0,
       badges: {},
       sessions: [],
+      todos: [],
+      customMinutes: DEFAULT_CUSTOM_MINUTES,
       lastMode: "focus",
       theme: null,
     };
@@ -52,6 +61,8 @@
     const state = Object.assign(defaultState(), stored || {});
     state.badges = Object.assign({}, stored && stored.badges);
     state.sessions = capSessions(Array.isArray(state.sessions) ? state.sessions : []);
+    state.todos = capTodos(Array.isArray(state.todos) ? state.todos : []);
+    state.customMinutes = clampMinutes(state.customMinutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
 
     const now = todayStr();
     if (state.today !== now) {
@@ -90,6 +101,7 @@
           running,
           sessionStart: sessionStart ? sessionStart.toISOString() : null,
           taskDraft: el.taskInput.value,
+          activeTodoId,
         })
       );
     } catch (e) {
@@ -108,24 +120,34 @@
   /* ---------------- App state ---------------- */
   let state = loadState();
 
-  let mode = DURATIONS[state.lastMode] ? state.lastMode : "focus";
-  let totalDuration = DURATIONS[mode];
+  function isValidMode(m) {
+    return !!DURATIONS[m] || m === "custom";
+  }
+
+  function durationFor(m) {
+    return m === "custom" ? state.customMinutes * 60 : DURATIONS[m];
+  }
+
+  let mode = isValidMode(state.lastMode) ? state.lastMode : "focus";
+  let totalDuration = durationFor(mode);
   let remaining = totalDuration;
   let running = false;
   let endTime = null;
   let tickHandle = null;
   let sessionStart = null;
   let pendingTaskDraft = "";
+  let activeTodoId = null;
 
   /* Resume an in-flight timer left over from before a reload/close, if any. */
   (function restoreTimer() {
     const snap = loadTimerSnapshot();
-    if (!snap || !DURATIONS[snap.mode]) return;
+    if (!snap || !isValidMode(snap.mode)) return;
 
     mode = snap.mode;
-    totalDuration = DURATIONS[mode];
+    totalDuration = durationFor(mode);
     sessionStart = snap.sessionStart ? new Date(snap.sessionStart) : null;
     pendingTaskDraft = snap.taskDraft || "";
+    activeTodoId = snap.activeTodoId || null;
 
     if (snap.running && typeof snap.endTime === "number") {
       const liveRemaining = (snap.endTime - Date.now()) / 1000;
@@ -150,6 +172,16 @@
     themeToggle: document.getElementById("themeToggle"),
     modeButtons: Array.from(document.querySelectorAll(".mode-btn")),
     taskInput: document.getElementById("taskInput"),
+    customDuration: document.getElementById("customDuration"),
+    customMinutesInput: document.getElementById("customMinutesInput"),
+    customMinusBtn: document.getElementById("customMinusBtn"),
+    customPlusBtn: document.getElementById("customPlusBtn"),
+    todoForm: document.getElementById("todoForm"),
+    todoInput: document.getElementById("todoInput"),
+    todoMinutesInput: document.getElementById("todoMinutesInput"),
+    todoList: document.getElementById("todoList"),
+    clearDoneBtn: document.getElementById("clearDoneBtn"),
+    taskSuggestions: document.getElementById("taskSuggestions"),
     dialProgress: document.getElementById("dialProgress"),
     timeDisplay: document.getElementById("timeDisplay"),
     modeLabel: document.getElementById("modeLabel"),
@@ -249,6 +281,134 @@
     });
   }
 
+  /* ---------------- To-do list ---------------- */
+  function makeTodoId() {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function addTodo(text, minutes) {
+    const trimmed = (text || "").trim().slice(0, 60);
+    if (!trimmed) return;
+    state.todos.unshift({
+      id: makeTodoId(),
+      text: trimmed,
+      minutes: clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES),
+      done: false,
+      createdAt: new Date().toISOString(),
+    });
+    state.todos = capTodos(state.todos);
+    saveState(state);
+    renderTodos();
+  }
+
+  function toggleTodoDone(id) {
+    const todo = state.todos.find((t) => t.id === id);
+    if (!todo) return;
+    todo.done = !todo.done;
+    saveState(state);
+    renderTodos();
+  }
+
+  function deleteTodo(id) {
+    state.todos = state.todos.filter((t) => t.id !== id);
+    if (activeTodoId === id) activeTodoId = null;
+    saveState(state);
+    renderTodos();
+  }
+
+  function clearDoneTodos() {
+    state.todos = state.todos.filter((t) => !t.done);
+    saveState(state);
+    renderTodos();
+  }
+
+  function startTodo(id) {
+    if (running) return;
+    const todo = state.todos.find((t) => t.id === id);
+    if (!todo || todo.done) return;
+    state.customMinutes = todo.minutes;
+    saveState(state);
+    setMode("custom", { keepActiveTodo: true });
+    activeTodoId = todo.id;
+    el.taskInput.value = todo.text;
+    saveTimerSnapshot();
+    start();
+  }
+
+  function renderTodos() {
+    el.todoList.innerHTML = "";
+
+    if (!state.todos.length) {
+      const empty = document.createElement("p");
+      empty.className = "todo-empty";
+      empty.textContent = "No tasks yet. Add one above.";
+      el.todoList.appendChild(empty);
+      el.clearDoneBtn.hidden = true;
+      return;
+    }
+
+    let anyDone = false;
+    state.todos.forEach((todo) => {
+      if (todo.done) anyDone = true;
+
+      const row = document.createElement("div");
+      row.className = "todo-item" + (todo.done ? " is-done" : "");
+
+      const check = document.createElement("button");
+      check.type = "button";
+      check.className = "todo-item__check";
+      check.setAttribute("aria-label", todo.done ? `Mark "${todo.text}" not done` : `Mark "${todo.text}" done`);
+      check.textContent = todo.done ? "✓" : "";
+      check.addEventListener("click", () => toggleTodoDone(todo.id));
+
+      const main = document.createElement("div");
+      main.className = "todo-item__main";
+      const text = document.createElement("div");
+      text.className = "todo-item__text";
+      text.textContent = todo.text;
+      const minutes = document.createElement("div");
+      minutes.className = "todo-item__minutes";
+      minutes.textContent = `${todo.minutes} min`;
+      main.appendChild(text);
+      main.appendChild(minutes);
+
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "todo-item__play";
+      play.setAttribute("aria-label", `Start a ${todo.minutes} minute timer for ${todo.text}`);
+      play.textContent = "▶";
+      play.disabled = running || todo.done;
+      play.addEventListener("click", () => startTodo(todo.id));
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "todo-item__delete";
+      del.setAttribute("aria-label", `Delete "${todo.text}"`);
+      del.textContent = "✕";
+      del.disabled = running && activeTodoId === todo.id;
+      del.addEventListener("click", () => deleteTodo(todo.id));
+
+      row.appendChild(check);
+      row.appendChild(main);
+      row.appendChild(play);
+      row.appendChild(del);
+      el.todoList.appendChild(row);
+    });
+
+    el.clearDoneBtn.hidden = !anyDone;
+  }
+
+  /* ---------------- Task autosuggest ---------------- */
+  function renderSuggestions() {
+    const names = buildTaskSuggestions(state.sessions, state.todos, 20);
+    el.taskSuggestions.innerHTML = "";
+    names.forEach((name) => {
+      const opt = document.createElement("option");
+      opt.value = name;
+      el.taskSuggestions.appendChild(opt);
+    });
+  }
+
   /* ---------------- Session log ---------------- */
   function addLogEntry(task, xpEarned) {
     state.sessions.unshift({
@@ -320,6 +480,11 @@
       btn.setAttribute("aria-selected", isActive ? "true" : "false");
       btn.disabled = running;
     });
+    el.customDuration.hidden = mode !== "custom";
+    el.customMinutesInput.value = state.customMinutes;
+    el.customMinutesInput.disabled = running;
+    el.customMinusBtn.disabled = running;
+    el.customPlusBtn.disabled = running;
   }
 
   function renderStats() {
@@ -337,6 +502,8 @@
     renderStats();
     renderBadges();
     renderLog();
+    renderTodos();
+    renderSuggestions();
   }
 
   /* ---------------- Timer engine ---------------- */
@@ -344,15 +511,28 @@
     if (running && !opts.force) return;
     mode = newMode;
     state.lastMode = newMode;
-    totalDuration = DURATIONS[mode];
+    totalDuration = durationFor(mode);
     remaining = totalDuration;
     running = false;
     endTime = null;
     sessionStart = null;
+    if (!opts.keepActiveTodo) activeTodoId = null;
     clearTick();
     saveState(state);
     clearTimerSnapshot();
     renderAll();
+  }
+
+  function setCustomMinutes(newMinutes) {
+    if (running) return;
+    state.customMinutes = clampMinutes(newMinutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
+    saveState(state);
+    if (mode === "custom") {
+      totalDuration = durationFor("custom");
+      remaining = totalDuration;
+      renderTimer();
+    }
+    el.customMinutesInput.value = state.customMinutes;
   }
 
   function clearTick() {
@@ -421,10 +601,12 @@
     playBeep();
     clearTimerSnapshot();
 
-    const wasFocus = mode === "focus";
+    const wasWork = mode === "focus" || mode === "custom";
     const startedAt = sessionStart || new Date();
+    const finishedTodoId = activeTodoId;
+    activeTodoId = null;
 
-    if (wasFocus) {
+    if (wasWork) {
       ensureTodayFresh();
       state.currentStreak = nextStreak(state.lastSessionDate, state.currentStreak, todayStr());
       state.lastSessionDate = todayStr();
@@ -437,7 +619,15 @@
       state.xp = applied.xp;
       state.level = applied.level;
 
-      const taskName = el.taskInput.value.trim().slice(0, 60);
+      let taskName = null;
+      if (finishedTodoId) {
+        const todo = state.todos.find((t) => t.id === finishedTodoId);
+        if (todo) {
+          todo.done = true;
+          taskName = todo.text;
+        }
+      }
+      if (!taskName) taskName = el.taskInput.value.trim().slice(0, 60);
       addLogEntry(taskName, xpEarned);
 
       state.badges = evaluateBadges(state.badges, {
@@ -453,7 +643,7 @@
       const nextMode = nextBreakMode(state.totalSessions);
       saveState(state);
       renderAll();
-      announce(`Focus session complete. ${xpEarned} XP earned. ${MODE_LABELS[nextMode]} starting.`);
+      announce(`${finishedTodoId ? "Task" : "Focus session"} complete. ${xpEarned} XP earned. ${MODE_LABELS[nextMode]} starting.`);
       setMode(nextMode, { force: true });
     } else {
       saveState(state);
@@ -474,6 +664,19 @@
   });
 
   el.resetBtn.addEventListener("click", reset);
+
+  el.customMinutesInput.addEventListener("change", () => setCustomMinutes(el.customMinutesInput.value));
+  el.customMinusBtn.addEventListener("click", () => setCustomMinutes(state.customMinutes - 1));
+  el.customPlusBtn.addEventListener("click", () => setCustomMinutes(state.customMinutes + 1));
+
+  el.todoForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    addTodo(el.todoInput.value, el.todoMinutesInput.value);
+    el.todoInput.value = "";
+    el.todoInput.focus();
+  });
+
+  el.clearDoneBtn.addEventListener("click", clearDoneTodos);
 
   el.taskInput.addEventListener("input", () => {
     if (el.taskInput.value.length > 60) {

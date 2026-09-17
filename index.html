@@ -29,11 +29,23 @@
     <button class="mode-btn" data-mode="focus" role="tab" aria-selected="true">Focus</button>
     <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short Break</button>
     <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long Break</button>
+    <button class="mode-btn" data-mode="custom" role="tab" aria-selected="false">Custom</button>
   </section>
 
-  <div class="task-input-wrap">
-    <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="What are you focusing on?" autocomplete="off">
+  <div class="custom-duration" id="customDuration" hidden>
+    <label for="customMinutesInput" class="custom-duration__label">Minutes</label>
+    <div class="stepper">
+      <button type="button" class="stepper__btn" id="customMinusBtn" aria-label="Decrease minutes">−</button>
+      <input type="number" id="customMinutesInput" class="stepper__input" min="1" max="120" value="10" inputmode="numeric">
+      <button type="button" class="stepper__btn" id="customPlusBtn" aria-label="Increase minutes">+</button>
+    </div>
   </div>
+
+  <div class="task-input-wrap">
+    <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="What are you focusing on?" autocomplete="off" list="taskSuggestions">
+  </div>
+
+  <datalist id="taskSuggestions"></datalist>
 
   <section class="dial-wrap">
     <svg class="dial" viewBox="0 0 300 300" aria-hidden="true">
@@ -74,6 +86,19 @@
     <div class="xp-bar">
       <div class="xp-bar__fill" id="xpFill"></div>
     </div>
+  </section>
+
+  <section class="panel todo-panel">
+    <h2 class="panel__title">To‑Do</h2>
+    <form class="todo-add" id="todoForm">
+      <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
+      <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
+      <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
+    </form>
+    <div class="todo-list" id="todoList">
+      <p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p>
+    </div>
+    <button type="button" class="todo-clear" id="clearDoneBtn" hidden>Clear completed</button>
   </section>
 
   <section class="panel badges-panel">

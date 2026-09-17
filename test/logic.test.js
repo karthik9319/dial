@@ -11,7 +11,11 @@ const {
   evaluateBadges,
   formatTime,
   capSessions,
+  clampMinutes,
+  capTodos,
+  buildTaskSuggestions,
   MAX_LOGGED_SESSIONS,
+  MAX_TODOS,
 } = require("../logic.js");
 
 /* ---------------- XP / levels ---------------- */
@@ -159,4 +163,79 @@ test("capSessions trims the log to the retention cap, keeping the newest entries
 test("capSessions leaves a short log untouched", () => {
   const sessions = [{ task: "a" }, { task: "b" }];
   assert.equal(capSessions(sessions).length, 2);
+});
+
+/* ---------- Custom duration / to-do list ---------- */
+
+test("clampMinutes rounds to the nearest whole minute", () => {
+  assert.equal(clampMinutes(9.6, 1, 120), 10);
+  assert.equal(clampMinutes(9.4, 1, 120), 9);
+});
+
+test("clampMinutes clamps to the [min, max] range", () => {
+  assert.equal(clampMinutes(0, 1, 120), 1);
+  assert.equal(clampMinutes(-5, 1, 120), 1);
+  assert.equal(clampMinutes(500, 1, 120), 120);
+});
+
+test("clampMinutes falls back to min for non-numeric input", () => {
+  assert.equal(clampMinutes("", 1, 120), 1);
+  assert.equal(clampMinutes("abc", 1, 120), 1);
+  assert.equal(clampMinutes(undefined, 1, 120), 1);
+  assert.equal(clampMinutes(NaN, 5, 120), 5);
+});
+
+test("clampMinutes defaults to a 1-120 range when bounds are omitted", () => {
+  assert.equal(clampMinutes(0), 1);
+  assert.equal(clampMinutes(999), 120);
+});
+
+test("capTodos trims the list to the retention cap, keeping the newest entries", () => {
+  const todos = Array.from({ length: MAX_TODOS + 10 }, (_, i) => ({ text: `t${i}` }));
+  const capped = capTodos(todos);
+  assert.equal(capped.length, MAX_TODOS);
+  assert.equal(capped[0].text, "t0");
+});
+
+test("capTodos leaves a short list untouched", () => {
+  const todos = [{ text: "a" }, { text: "b" }];
+  assert.equal(capTodos(todos).length, 2);
+});
+
+/* ---------- Task autosuggest ---------- */
+
+test("buildTaskSuggestions orders by most recent first, across todos and sessions", () => {
+  const sessions = [{ task: "Old report", time: "2026-09-10T09:00:00Z" }];
+  const todos = [{ text: "Book tickets", createdAt: "2026-09-16T09:00:00Z" }];
+  const result = buildTaskSuggestions(sessions, todos);
+  assert.deepEqual(result, ["Book tickets", "Old report"]);
+});
+
+test("buildTaskSuggestions dedupes case-insensitively, keeping the most recent casing", () => {
+  const sessions = [
+    { task: "book tickets", time: "2026-09-10T09:00:00Z" },
+    { task: "Book Tickets", time: "2026-09-16T09:00:00Z" },
+  ];
+  const result = buildTaskSuggestions(sessions, []);
+  assert.deepEqual(result, ["Book Tickets"]);
+});
+
+test("buildTaskSuggestions excludes blank and untitled placeholder entries", () => {
+  const sessions = [
+    { task: "", time: "2026-09-16T09:00:00Z" },
+    { task: "Untitled focus session", time: "2026-09-15T09:00:00Z" },
+    { task: "Real task", time: "2026-09-14T09:00:00Z" },
+  ];
+  const result = buildTaskSuggestions(sessions, []);
+  assert.deepEqual(result, ["Real task"]);
+});
+
+test("buildTaskSuggestions caps the result to the given limit", () => {
+  const sessions = Array.from({ length: 30 }, (_, i) => ({
+    task: `Task ${i}`,
+    time: new Date(2026, 0, i + 1).toISOString(),
+  }));
+  const result = buildTaskSuggestions(sessions, [], 5);
+  assert.equal(result.length, 5);
+  assert.equal(result[0], "Task 29");
 });

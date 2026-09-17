@@ -16,6 +16,7 @@
     focus: "Focus",
     short: "Short Break",
     long: "Long Break",
+    custom: "Custom",
   };
 
   const BADGE_DEFS = [
@@ -29,6 +30,7 @@
   ];
 
   const MAX_LOGGED_SESSIONS = 200;
+  const MAX_TODOS = 100;
 
   function todayStr(d) {
     d = d || new Date();
@@ -113,11 +115,53 @@
     return sessions.length > MAX_LOGGED_SESSIONS ? sessions.slice(0, MAX_LOGGED_SESSIONS) : sessions;
   }
 
+  /** Rounds and clamps a custom-duration input to a whole number of minutes within [min, max]. Non-numeric input falls back to min. */
+  function clampMinutes(value, min, max) {
+    min = typeof min === "number" ? min : 1;
+    max = typeof max === "number" ? max : 120;
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n)) return min;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  /** Trims a to-do list (newest-first) down to the retention cap. */
+  function capTodos(todos) {
+    return todos.length > MAX_TODOS ? todos.slice(0, MAX_TODOS) : todos;
+  }
+
+  const UNTITLED_TASK = "Untitled focus session";
+
+  /**
+   * Builds a deduped (case-insensitive), most-recent-first list of past task
+   * names from to-dos and logged sessions, for autosuggest. Pure — sessions
+   * and todos are only read, never mutated.
+   */
+  function buildTaskSuggestions(sessions, todos, limit) {
+    limit = typeof limit === "number" ? limit : 20;
+    const dated = [];
+    (todos || []).forEach((t) => dated.push({ text: t.text, at: t.createdAt }));
+    (sessions || []).forEach((s) => dated.push({ text: s.task, at: s.time }));
+    dated.sort((a, b) => new Date(b.at) - new Date(a.at));
+
+    const seen = new Set();
+    const result = [];
+    dated.forEach(({ text }) => {
+      const trimmed = (text || "").trim();
+      if (!trimmed || trimmed === UNTITLED_TASK) return;
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      result.push(trimmed);
+    });
+    return result.slice(0, limit);
+  }
+
   const DialLogic = {
     DURATIONS,
     MODE_LABELS,
     BADGE_DEFS,
     MAX_LOGGED_SESSIONS,
+    MAX_TODOS,
     todayStr,
     xpForLevel,
     applyXp,
@@ -129,6 +173,9 @@
     evaluateBadges,
     formatTime,
     capSessions,
+    clampMinutes,
+    capTodos,
+    buildTaskSuggestions,
   };
 
   if (typeof module !== "undefined" && module.exports) {

@@ -1,6 +1,13 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
 
+/* Dev runs (`electron .`) share the generic "Electron" app bundle, so the
+   macOS menu bar and Dock label read "Electron" unless overridden here.
+   Must be set before 'ready' to take effect. A packaged build (npm run
+   build) doesn't need this — electron-builder names the bundle "Dial"
+   from package.json's productName. */
+app.setName("Dial");
+
 const ICON_PATH = path.join(__dirname, "build", "icon.png");
 
 function createWindow() {

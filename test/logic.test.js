@@ -12,8 +12,14 @@ const {
   formatTime,
   capSessions,
   clampMinutes,
+  clampVolume,
   capTodos,
   buildTaskSuggestions,
+  normalizeSettings,
+  sessionsPerDay,
+  summarizeSessions,
+  formatMinutes,
+  DEFAULT_SETTINGS,
   MAX_LOGGED_SESSIONS,
   MAX_TODOS,
 } = require("../logic.js");
@@ -238,4 +244,122 @@ test("buildTaskSuggestions caps the result to the given limit", () => {
   const result = buildTaskSuggestions(sessions, [], 5);
   assert.equal(result.length, 5);
   assert.equal(result[0], "Task 29");
+});
+
+/* ---------------- Settings ---------------- */
+
+test("normalizeSettings returns the defaults for empty or missing input", () => {
+  assert.deepEqual(normalizeSettings(undefined), DEFAULT_SETTINGS);
+  assert.deepEqual(normalizeSettings({}), DEFAULT_SETTINGS);
+});
+
+test("normalizeSettings keeps valid stored values", () => {
+  const s = normalizeSettings({
+    focusMinutes: 50,
+    shortMinutes: 10,
+    longMinutes: 20,
+    dailyGoal: 4,
+    autoStart: true,
+    notify: false,
+    alarmSound: "bell",
+    alarmVolume: 0.25,
+  });
+  assert.equal(s.focusMinutes, 50);
+  assert.equal(s.shortMinutes, 10);
+  assert.equal(s.longMinutes, 20);
+  assert.equal(s.dailyGoal, 4);
+  assert.equal(s.autoStart, true);
+  assert.equal(s.notify, false);
+  assert.equal(s.alarmSound, "bell");
+  assert.equal(s.alarmVolume, 0.25);
+});
+
+test("normalizeSettings clamps durations into their allowed ranges", () => {
+  const s = normalizeSettings({ focusMinutes: 999, shortMinutes: 0, longMinutes: 500, dailyGoal: 99 });
+  assert.equal(s.focusMinutes, 120);
+  assert.equal(s.shortMinutes, 1);
+  assert.equal(s.longMinutes, 60);
+  assert.equal(s.dailyGoal, 24);
+});
+
+test("normalizeSettings rejects an unknown alarm sound", () => {
+  assert.equal(normalizeSettings({ alarmSound: "airhorn" }).alarmSound, DEFAULT_SETTINGS.alarmSound);
+  assert.equal(normalizeSettings({ alarmSound: "none" }).alarmSound, "none");
+});
+
+test("normalizeSettings coerces truthy/falsy toggles to real booleans", () => {
+  const s = normalizeSettings({ autoStart: "yes", notify: 0 });
+  assert.equal(s.autoStart, true);
+  assert.equal(s.notify, false);
+});
+
+test("clampVolume holds volume within 0-1 and rounds to two decimals", () => {
+  assert.equal(clampVolume(-1), 0);
+  assert.equal(clampVolume(5), 1);
+  assert.equal(clampVolume(0.333), 0.33);
+  assert.equal(clampVolume("abc"), DEFAULT_SETTINGS.alarmVolume);
+});
+
+/* ---------------- Stats ---------------- */
+
+test("sessionsPerDay returns one oldest-first bucket per day, ending today", () => {
+  const buckets = sessionsPerDay([], 7, "2026-09-21");
+  assert.equal(buckets.length, 7);
+  assert.equal(buckets[0].date, "2026-09-15");
+  assert.equal(buckets[6].date, "2026-09-21");
+});
+
+test("sessionsPerDay counts sessions and sums minutes into the right day", () => {
+  const sessions = [
+    { time: new Date(2026, 8, 21, 9, 0).toISOString(), minutes: 25 },
+    { time: new Date(2026, 8, 21, 11, 0).toISOString(), minutes: 10 },
+    { time: new Date(2026, 8, 19, 9, 0).toISOString(), minutes: 25 },
+  ];
+  const buckets = sessionsPerDay(sessions, 7, "2026-09-21");
+  const today = buckets[6];
+  const twoDaysAgo = buckets[4];
+  assert.equal(today.count, 2);
+  assert.equal(today.minutes, 35);
+  assert.equal(twoDaysAgo.count, 1);
+  assert.equal(twoDaysAgo.minutes, 25);
+});
+
+test("sessionsPerDay ignores sessions outside the window", () => {
+  const sessions = [{ time: new Date(2026, 0, 1, 9, 0).toISOString(), minutes: 25 }];
+  const buckets = sessionsPerDay(sessions, 7, "2026-09-21");
+  assert.equal(buckets.reduce((n, b) => n + b.count, 0), 0);
+});
+
+test("sessionsPerDay counts legacy entries with no recorded duration as zero minutes", () => {
+  const sessions = [{ time: new Date(2026, 8, 21, 9, 0).toISOString() }];
+  const buckets = sessionsPerDay(sessions, 7, "2026-09-21");
+  assert.equal(buckets[6].count, 1);
+  assert.equal(buckets[6].minutes, 0);
+});
+
+test("summarizeSessions rolls up today, the last 7 days and the last 30 days", () => {
+  const sessions = [
+    { time: new Date(2026, 8, 21, 9, 0).toISOString(), minutes: 25 },
+    { time: new Date(2026, 8, 18, 9, 0).toISOString(), minutes: 30 },
+    { time: new Date(2026, 8, 5, 9, 0).toISOString(), minutes: 45 },
+    { time: new Date(2026, 6, 5, 9, 0).toISOString(), minutes: 60 },
+  ];
+  const totals = summarizeSessions(sessions, "2026-09-21");
+  assert.deepEqual(totals.today, { count: 1, minutes: 25 });
+  assert.deepEqual(totals.week, { count: 2, minutes: 55 });
+  assert.deepEqual(totals.month, { count: 3, minutes: 100 });
+});
+
+test("summarizeSessions excludes sessions dated after today", () => {
+  const sessions = [{ time: new Date(2026, 8, 25, 9, 0).toISOString(), minutes: 25 }];
+  const totals = summarizeSessions(sessions, "2026-09-21");
+  assert.deepEqual(totals.today, { count: 0, minutes: 0 });
+  assert.deepEqual(totals.month, { count: 0, minutes: 0 });
+});
+
+test("formatMinutes renders minutes, hours, and mixed durations", () => {
+  assert.equal(formatMinutes(0), "0m");
+  assert.equal(formatMinutes(45), "45m");
+  assert.equal(formatMinutes(60), "1h");
+  assert.equal(formatMinutes(80), "1h 20m");
 });

@@ -49,6 +49,10 @@
 
 * { box-sizing: border-box; }
 
+/* Author `display` rules outrank the UA stylesheet's [hidden] default, so any
+   element toggled via el.hidden needs this to actually disappear. */
+[hidden] { display: none !important; }
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -87,31 +91,52 @@ body {
   outline-offset: 2px;
 }
 
-/* ---------- Theme toggle ---------- */
-.theme-toggle {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  width: 30px;
-  height: 30px;
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar__brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+
+.topbar__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.icon-btn {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 1px solid var(--hairline);
-  background: var(--panel);
-  color: var(--brass);
-  font-size: 14px;
+  background: var(--panel-raised);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow);
-  transition: transform 0.15s ease;
-  z-index: 10;
+  padding: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.theme-toggle:hover { transform: scale(1.06); }
-.theme-toggle:active { transform: scale(0.94); }
+
+.icon-btn:hover {
+  color: var(--brass);
+  border-color: var(--brass);
+}
 
 /* ---------- Console panel ---------- */
 .console {
+  position: relative; /* containing block for the settings sheet */
   width: 100%;
   max-width: 340px;
   min-width: 0;
@@ -127,49 +152,70 @@ body {
 
 .console__fixed {
   flex: none;
-  padding: 16px 16px 12px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  border-bottom: 1px solid var(--hairline);
+  gap: 9px;
 }
 
-.console__scroll {
+/* ---------- Tabs ---------- */
+.tabs {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin: 0 14px;
+  padding: 4px;
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.tab {
+  padding: 6px 4px;
+  border: none;
+  border-radius: calc(var(--radius-md) - 4px);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--panel-raised);
+  color: var(--brass);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.panes {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 16px 16px;
+  padding: 10px 14px 14px;
+}
+
+.pane {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-.console__header {
-  text-align: center;
-}
-
-.brand {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 20px;
-  letter-spacing: 0.12em;
-  margin: 0;
-  color: var(--text);
-}
-
-.brand__sub {
-  margin: 1px 0 0;
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+/* A pane is already a scoped surface, so the panels inside it drop their
+   boxes — nesting a bordered card inside a bordered card just adds noise. */
+.pane .panel {
+  border: none;
+  background: transparent;
+  padding: 0;
 }
 
 /* ---------- Mode tabs ---------- */
 .modes {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
   background: var(--bg-1);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
@@ -177,15 +223,14 @@ body {
 }
 
 .mode-btn {
-  flex: 1;
-  padding: 7px 6px;
+  padding: 6px 4px;
   border: none;
   border-radius: calc(var(--radius-md) - 5px);
   background: transparent;
   color: var(--text-dim);
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 11.5px;
+  font-size: 11px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -209,9 +254,6 @@ body {
   gap: 10px;
 }
 
-.custom-duration[hidden] {
-  display: none;
-}
 
 .custom-duration__label {
   font-size: 10.5px;
@@ -283,7 +325,7 @@ body {
 .dial-wrap {
   position: relative;
   width: 100%;
-  max-width: 168px;
+  max-width: 150px;
   margin: 2px auto;
   aspect-ratio: 1 / 1;
 }
@@ -408,6 +450,10 @@ body {
   color: var(--text-dim);
 }
 
+.stat__value.is-goal-met {
+  text-shadow: 0 0 10px rgba(201, 162, 39, 0.55);
+}
+
 /* ---------- XP panel ---------- */
 .xp-panel {
   display: flex;
@@ -463,6 +509,192 @@ body {
   font-weight: 600;
   letter-spacing: 0.03em;
   color: var(--text);
+}
+
+/* ---------- Settings sheet ---------- */
+.sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--panel);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+}
+
+
+.sheet__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sheet__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px 16px;
+}
+
+/* ---------- Stats ---------- */
+.stats-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.figure {
+  text-align: center;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+}
+
+.figure__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.figure__label {
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.figure__sub {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.chart__plot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 60px;
+  padding: 0 1px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.chart__col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.chart__bar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 3px;
+  background: var(--brass-dim);
+  transition: height 0.3s ease;
+}
+
+.chart__bar.is-goal-met {
+  background: var(--brass);
+}
+
+.chart__goal {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--brass);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.chart__labels {
+  display: flex;
+  gap: 4px;
+  padding: 3px 1px 0;
+}
+
+.chart__label {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 8.5px;
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+.chart__note {
+  margin: 8px 0 0;
+  font-size: 9.5px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ---------- Settings ---------- */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+}
+
+.setting-row label {
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.setting-select {
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+}
+
+.setting-range {
+  width: 108px;
+  accent-color: var(--brass);
+}
+
+.setting-range:disabled {
+  opacity: 0.4;
+}
+
+.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 11.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.setting-check input {
+  accent-color: var(--brass);
+  margin: 0;
 }
 
 /* ---------- Badges ---------- */
@@ -555,9 +787,8 @@ body {
   cursor: pointer;
 }
 
+/* The pane scrolls as a whole, so the lists inside it run their full length. */
 .todo-list {
-  max-height: 150px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -630,6 +861,10 @@ body {
   color: var(--text-dim);
 }
 
+.todo-item__minutes.is-over {
+  color: var(--danger);
+}
+
 .todo-item__play,
 .todo-item__delete {
   flex: none;
@@ -675,14 +910,9 @@ body {
   border-color: var(--text-dim);
 }
 
-.todo-clear[hidden] {
-  display: none;
-}
 
 /* ---------- Session log ---------- */
 .log {
-  max-height: 130px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -746,11 +976,13 @@ body {
 /* ---------- Responsive ---------- */
 @media (max-width: 300px) {
   .console__fixed {
-    padding: 12px 10px 10px;
-    gap: 10px;
+    padding: 8px 10px;
+    gap: 8px;
   }
-  .console__scroll {
-    padding: 10px 10px 14px;
-    gap: 10px;
+  .tabs {
+    margin: 0 10px;
+  }
+  .panes {
+    padding: 8px 10px 12px;
   }
 }

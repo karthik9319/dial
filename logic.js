@@ -6,17 +6,33 @@
 (function (root) {
   "use strict";
 
-  const DURATIONS = {
-    focus: 25 * 60,
-    short: 5 * 60,
-    long: 15 * 60,
-  };
+  const MODES = ["focus", "short", "long", "custom"];
 
   const MODE_LABELS = {
     focus: "Focus",
     short: "Short Break",
     long: "Long Break",
     custom: "Custom",
+  };
+
+  /** Mode -> the settings key holding its duration. Custom is per-session, so it has none. */
+  const MODE_SETTING_KEYS = {
+    focus: "focusMinutes",
+    short: "shortMinutes",
+    long: "longMinutes",
+  };
+
+  const ALARM_SOUNDS = ["chime", "bell", "pulse", "none"];
+
+  const DEFAULT_SETTINGS = {
+    focusMinutes: 25,
+    shortMinutes: 5,
+    longMinutes: 15,
+    dailyGoal: 8,
+    autoStart: false,
+    notify: true,
+    alarmSound: "chime",
+    alarmVolume: 0.6,
   };
 
   const BADGE_DEFS = [
@@ -115,18 +131,131 @@
     return sessions.length > MAX_LOGGED_SESSIONS ? sessions.slice(0, MAX_LOGGED_SESSIONS) : sessions;
   }
 
-  /** Rounds and clamps a custom-duration input to a whole number of minutes within [min, max]. Non-numeric input falls back to min. */
-  function clampMinutes(value, min, max) {
-    min = typeof min === "number" ? min : 1;
-    max = typeof max === "number" ? max : 120;
+  /** Rounds and clamps to a whole number within [min, max]. Non-numeric input falls back to min. */
+  function clampInt(value, min, max) {
     const n = Math.round(Number(value));
     if (!Number.isFinite(n)) return min;
     return Math.min(max, Math.max(min, n));
   }
 
+  /** Rounds and clamps a custom-duration input to a whole number of minutes within [min, max]. Non-numeric input falls back to min. */
+  function clampMinutes(value, min, max) {
+    return clampInt(value, typeof min === "number" ? min : 1, typeof max === "number" ? max : 120);
+  }
+
   /** Trims a to-do list (newest-first) down to the retention cap. */
   function capTodos(todos) {
     return todos.length > MAX_TODOS ? todos.slice(0, MAX_TODOS) : todos;
+  }
+
+  /**
+   * Coerces a stored settings blob into a complete, in-range settings object.
+   * Anything missing, out of range, or unrecognised falls back to its default,
+   * so a hand-edited or older localStorage payload can't break the timer.
+   */
+  function normalizeSettings(stored) {
+    const s = Object.assign({}, DEFAULT_SETTINGS, stored || {});
+    return {
+      focusMinutes: clampInt(s.focusMinutes, 1, 120),
+      shortMinutes: clampInt(s.shortMinutes, 1, 60),
+      longMinutes: clampInt(s.longMinutes, 1, 60),
+      dailyGoal: clampInt(s.dailyGoal, 1, 24),
+      autoStart: !!s.autoStart,
+      notify: !!s.notify,
+      alarmSound: ALARM_SOUNDS.indexOf(s.alarmSound) >= 0 ? s.alarmSound : DEFAULT_SETTINGS.alarmSound,
+      alarmVolume: clampVolume(s.alarmVolume),
+    };
+  }
+
+  /** Clamps an alarm volume to [0, 1], rounded to two decimals. */
+  function clampVolume(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return DEFAULT_SETTINGS.alarmVolume;
+    return Math.min(1, Math.max(0, Math.round(n * 100) / 100));
+  }
+
+  /** Parses a "YYYY-MM-DD" key into a local-midnight Date. */
+  function parseDay(key) {
+    const [y, m, d] = String(key).split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  /**
+   * Buckets sessions into the last `days` calendar days ending on `today`,
+   * oldest first. Each bucket is {date, count, minutes}; entries logged before
+   * durations were recorded contribute to count but add 0 minutes.
+   */
+  function sessionsPerDay(sessions, days, today) {
+    const span = clampInt(days, 1, 366);
+    const end = parseDay(today || todayStr());
+    const buckets = [];
+    const byDate = new Map();
+
+    for (let i = span - 1; i >= 0; i--) {
+      const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i);
+      const bucket = { date: todayStr(d), count: 0, minutes: 0 };
+      buckets.push(bucket);
+      byDate.set(bucket.date, bucket);
+    }
+
+    (sessions || []).forEach((s) => {
+      const when = new Date(s.time);
+      if (isNaN(when.getTime())) return;
+      const bucket = byDate.get(todayStr(when));
+      if (!bucket) return;
+      bucket.count += 1;
+      bucket.minutes += typeof s.minutes === "number" ? s.minutes : 0;
+    });
+
+    return buckets;
+  }
+
+  /**
+   * Rolling session totals for today, the last 7 days and the last 30 days
+   * (each window ends on `today` inclusive).
+   */
+  function summarizeSessions(sessions, today) {
+    const end = parseDay(today || todayStr());
+    const endStamp = end.getTime();
+    const weekStart = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6).getTime();
+    const monthStart = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 29).getTime();
+
+    const totals = {
+      today: { count: 0, minutes: 0 },
+      week: { count: 0, minutes: 0 },
+      month: { count: 0, minutes: 0 },
+    };
+
+    (sessions || []).forEach((s) => {
+      const when = new Date(s.time);
+      if (isNaN(when.getTime())) return;
+      const dayStamp = new Date(when.getFullYear(), when.getMonth(), when.getDate()).getTime();
+      if (dayStamp > endStamp) return;
+      const minutes = typeof s.minutes === "number" ? s.minutes : 0;
+      if (dayStamp === endStamp) {
+        totals.today.count += 1;
+        totals.today.minutes += minutes;
+      }
+      if (dayStamp >= weekStart) {
+        totals.week.count += 1;
+        totals.week.minutes += minutes;
+      }
+      if (dayStamp >= monthStart) {
+        totals.month.count += 1;
+        totals.month.minutes += minutes;
+      }
+    });
+
+    return totals;
+  }
+
+  /** Renders a minute count as "45m" or "1h 20m". */
+  function formatMinutes(minutes) {
+    const total = Math.max(0, Math.round(Number(minutes) || 0));
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    if (!h) return `${m}m`;
+    return m ? `${h}h ${m}m` : `${h}h`;
   }
 
   const UNTITLED_TASK = "Untitled focus session";
@@ -157,8 +286,11 @@
   }
 
   const DialLogic = {
-    DURATIONS,
+    MODES,
     MODE_LABELS,
+    MODE_SETTING_KEYS,
+    ALARM_SOUNDS,
+    DEFAULT_SETTINGS,
     BADGE_DEFS,
     MAX_LOGGED_SESSIONS,
     MAX_TODOS,
@@ -173,9 +305,15 @@
     evaluateBadges,
     formatTime,
     capSessions,
+    clampInt,
     clampMinutes,
+    clampVolume,
     capTodos,
     buildTaskSuggestions,
+    normalizeSettings,
+    sessionsPerDay,
+    summarizeSessions,
+    formatMinutes,
   };
 
   if (typeof module !== "undefined" && module.exports) {

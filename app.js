@@ -2,8 +2,10 @@
   "use strict";
 
   const {
-    DURATIONS,
+    MODES,
     MODE_LABELS,
+    MODE_SETTING_KEYS,
+    DEFAULT_SETTINGS,
     BADGE_DEFS,
     todayStr,
     xpForLevel,
@@ -14,14 +16,29 @@
     evaluateBadges,
     formatTime,
     capSessions,
+    clampInt,
     clampMinutes,
+    clampVolume,
     capTodos,
     buildTaskSuggestions,
+    normalizeSettings,
+    sessionsPerDay,
+    summarizeSessions,
+    formatMinutes,
   } = window.DialLogic;
 
   const CUSTOM_MIN_MINUTES = 1;
   const CUSTOM_MAX_MINUTES = 120;
   const DEFAULT_CUSTOM_MINUTES = 10;
+  const CHART_DAYS = 7;
+
+  /** Allowed range per numeric setting, mirroring normalizeSettings in logic.js. */
+  const SETTING_RANGES = {
+    focusMinutes: [1, 120],
+    shortMinutes: [1, 60],
+    longMinutes: [1, 60],
+    dailyGoal: [1, 24],
+  };
 
   /* ---------------- Constants ---------------- */
   const STORAGE_KEY = "dial:state:v1";
@@ -45,6 +62,7 @@
       sessions: [],
       todos: [],
       customMinutes: DEFAULT_CUSTOM_MINUTES,
+      settings: Object.assign({}, DEFAULT_SETTINGS),
       lastMode: "focus",
       theme: null,
     };
@@ -63,6 +81,7 @@
     state.sessions = capSessions(Array.isArray(state.sessions) ? state.sessions : []);
     state.todos = capTodos(Array.isArray(state.todos) ? state.todos : []);
     state.customMinutes = clampMinutes(state.customMinutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
+    state.settings = normalizeSettings(state.settings);
 
     const now = todayStr();
     if (state.today !== now) {
@@ -121,11 +140,12 @@
   let state = loadState();
 
   function isValidMode(m) {
-    return !!DURATIONS[m] || m === "custom";
+    return MODES.indexOf(m) >= 0;
   }
 
   function durationFor(m) {
-    return m === "custom" ? state.customMinutes * 60 : DURATIONS[m];
+    if (m === "custom") return state.customMinutes * 60;
+    return state.settings[MODE_SETTING_KEYS[m]] * 60;
   }
 
   let mode = isValidMode(state.lastMode) ? state.lastMode : "focus";
@@ -195,6 +215,35 @@
     badgesRow: document.getElementById("badgesRow"),
     sessionLog: document.getElementById("sessionLog"),
     announcer: document.getElementById("announcer"),
+    figTodayCount: document.getElementById("figTodayCount"),
+    figTodayMinutes: document.getElementById("figTodayMinutes"),
+    figWeekCount: document.getElementById("figWeekCount"),
+    figWeekMinutes: document.getElementById("figWeekMinutes"),
+    figMonthCount: document.getElementById("figMonthCount"),
+    figMonthMinutes: document.getElementById("figMonthMinutes"),
+    statsChart: document.getElementById("statsChart"),
+    setFocus: document.getElementById("setFocus"),
+    setShort: document.getElementById("setShort"),
+    setLong: document.getElementById("setLong"),
+    setGoal: document.getElementById("setGoal"),
+    setAlarm: document.getElementById("setAlarm"),
+    setVolume: document.getElementById("setVolume"),
+    setAutoStart: document.getElementById("setAutoStart"),
+    setNotify: document.getElementById("setNotify"),
+    stepButtons: Array.from(document.querySelectorAll("[data-step]")),
+    tabs: Array.from(document.querySelectorAll(".tab")),
+    panes: Array.from(document.querySelectorAll(".pane")),
+    settingsSheet: document.getElementById("settingsSheet"),
+    openSettings: document.getElementById("openSettings"),
+    closeSettings: document.getElementById("closeSettings"),
+  };
+
+  /** Maps a numeric setting key to its input element. */
+  const SETTING_INPUTS = {
+    focusMinutes: el.setFocus,
+    shortMinutes: el.setShort,
+    longMinutes: el.setLong,
+    dailyGoal: el.setGoal,
   };
 
   el.dialProgress.style.strokeDasharray = `${RING_CIRCUMFERENCE}`;
@@ -236,29 +285,95 @@
     }, 30);
   }
 
-  /* ---------------- Audio (beep) ---------------- */
+  /* ---------------- Audio (alarm) ----------------
+     Each alarm is a short list of synthesised tones, so no audio files ship
+     with the app. Peak gain is per-tone and scaled by the volume setting. */
+  const ALARM_TONES = {
+    chime: [
+      { freq: 880, type: "sine", at: 0, hold: 0.28, peak: 0.22 },
+      { freq: 1108.73, type: "sine", at: 0.16, hold: 0.28, peak: 0.22 },
+    ],
+    bell: [
+      { freq: 1318.51, type: "sine", at: 0, hold: 0.9, peak: 0.2 },
+      { freq: 2637.02, type: "sine", at: 0, hold: 0.5, peak: 0.06 },
+    ],
+    pulse: [
+      { freq: 660, type: "triangle", at: 0, hold: 0.1, peak: 0.24 },
+      { freq: 660, type: "triangle", at: 0.16, hold: 0.1, peak: 0.24 },
+      { freq: 660, type: "triangle", at: 0.32, hold: 0.14, peak: 0.24 },
+    ],
+  };
+
   let audioCtx = null;
-  function playBeep() {
+
+  function playAlarm(soundName) {
+    const tones = ALARM_TONES[soundName || state.settings.alarmSound];
+    const volume = state.settings.alarmVolume;
+    if (!tones || volume <= 0) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       const ctx = audioCtx;
+      if (ctx.state === "suspended") ctx.resume();
       const now = ctx.currentTime;
-      [880, 1108.73].forEach((freq, i) => {
+      tones.forEach((tone) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        const start = now + i * 0.16;
+        osc.type = tone.type;
+        osc.frequency.value = tone.freq;
+        const start = now + tone.at;
         gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.22, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
+        gain.gain.linearRampToValueAtTime(tone.peak * volume, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + tone.hold);
         osc.connect(gain).connect(ctx.destination);
         osc.start(start);
-        osc.stop(start + 0.3);
+        osc.stop(start + tone.hold + 0.02);
       });
     } catch (e) {
       /* Web Audio unavailable — fail silently */
     }
+  }
+
+  /* ---------------- Desktop shell (Electron) ----------------
+     The bridge only exists inside the Electron wrapper; opened as a plain web
+     page every call here is a no-op and the app behaves as it always has. */
+  const shell = window.dialBridge || null;
+
+  function notifySessionEnd(title, body) {
+    if (!state.settings.notify) return;
+    if (shell && shell.notify) {
+      shell.notify({ title, body });
+      return;
+    }
+    try {
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification(title, { body });
+      }
+    } catch (e) {
+      /* notifications unavailable — the alarm sound still fires */
+    }
+  }
+
+  /* Browsers need an explicit opt-in; Electron grants notifications outright. */
+  function requestNotificationPermission() {
+    if (shell || !state.settings.notify) return;
+    try {
+      if (window.Notification && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  let lastPushedTitle = null;
+  function pushTimerToShell() {
+    if (!shell || !shell.updateTimer) return;
+    const display = running || remaining < totalDuration ? formatTime(remaining) : "";
+    /* The tray only re-renders once a second, so skip identical pushes. */
+    const signature = `${display}|${running}|${mode}`;
+    if (signature === lastPushedTitle) return;
+    lastPushedTitle = signature;
+    shell.updateTimer({ display, running, label: MODE_LABELS[mode] });
   }
 
   /* ---------------- Badges ---------------- */
@@ -335,6 +450,24 @@
     start();
   }
 
+  /**
+   * Credits time actually spent to the active to-do and detaches it. Called
+   * whenever a to-do-linked session ends — finished, reset, or abandoned by
+   * switching modes — so "spent" reflects real effort, not just completions.
+   */
+  function releaseActiveTodo(elapsedSeconds) {
+    if (!activeTodoId) return;
+    const todo = state.todos.find((t) => t.id === activeTodoId);
+    if (todo && elapsedSeconds > 0) {
+      todo.actualSeconds = (todo.actualSeconds || 0) + Math.round(elapsedSeconds);
+    }
+    activeTodoId = null;
+  }
+
+  function elapsedSeconds() {
+    return Math.max(0, totalDuration - Math.max(0, remaining));
+  }
+
   function renderTodos() {
     el.todoList.innerHTML = "";
 
@@ -366,9 +499,17 @@
       const text = document.createElement("div");
       text.className = "todo-item__text";
       text.textContent = todo.text;
+
+      const spentMinutes = Math.round((todo.actualSeconds || 0) / 60);
       const minutes = document.createElement("div");
       minutes.className = "todo-item__minutes";
-      minutes.textContent = `${todo.minutes} min`;
+      if (todo.actualSeconds) {
+        minutes.textContent = `est ${todo.minutes}m · spent ${formatMinutes(spentMinutes)}`;
+        if (spentMinutes > todo.minutes) minutes.classList.add("is-over");
+      } else {
+        minutes.textContent = `est ${todo.minutes}m`;
+      }
+
       main.appendChild(text);
       main.appendChild(minutes);
 
@@ -410,11 +551,13 @@
   }
 
   /* ---------------- Session log ---------------- */
-  function addLogEntry(task, xpEarned) {
+  function addLogEntry(task, xpEarned, minutes, sessionMode) {
     state.sessions.unshift({
       task: task || "Untitled focus session",
       time: new Date().toISOString(),
       xp: xpEarned,
+      minutes,
+      mode: sessionMode,
     });
     state.sessions = capSessions(state.sessions);
   }
@@ -463,6 +606,105 @@
     });
   }
 
+  /* ---------------- Tabs & settings sheet ---------------- */
+  function selectTab(paneId) {
+    el.tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.pane === paneId)));
+    el.panes.forEach((pane) => {
+      pane.hidden = pane.id !== paneId;
+    });
+  }
+
+  function setSettingsOpen(open) {
+    el.settingsSheet.hidden = !open;
+    (open ? el.closeSettings : el.openSettings).focus();
+  }
+
+  /* ---------------- Stats ---------------- */
+  const DAY_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
+
+  function renderStatsPanel() {
+    const totals = summarizeSessions(state.sessions, todayStr());
+    el.figTodayCount.textContent = totals.today.count;
+    el.figTodayMinutes.textContent = formatMinutes(totals.today.minutes);
+    el.figWeekCount.textContent = totals.week.count;
+    el.figWeekMinutes.textContent = formatMinutes(totals.week.minutes);
+    el.figMonthCount.textContent = totals.month.count;
+    el.figMonthMinutes.textContent = formatMinutes(totals.month.minutes);
+
+    const days = sessionsPerDay(state.sessions, CHART_DAYS, todayStr());
+    const goal = state.settings.dailyGoal;
+    /* Scale to whichever is taller so the goal line always stays on the chart. */
+    const ceiling = Math.max(goal, ...days.map((d) => d.count), 1);
+
+    el.statsChart.innerHTML = "";
+
+    /* Bars and the goal line share one plot box so their percentages line up. */
+    const plot = document.createElement("div");
+    plot.className = "chart__plot";
+
+    const goalLine = document.createElement("div");
+    goalLine.className = "chart__goal";
+    goalLine.style.bottom = `${(goal / ceiling) * 100}%`;
+    plot.appendChild(goalLine);
+
+    const labels = document.createElement("div");
+    labels.className = "chart__labels";
+
+    days.forEach((day) => {
+      const col = document.createElement("div");
+      col.className = "chart__col";
+      col.title = `${day.date}: ${day.count} session${day.count === 1 ? "" : "s"}${day.minutes ? ` · ${formatMinutes(day.minutes)}` : ""}`;
+
+      const bar = document.createElement("div");
+      bar.className = "chart__bar" + (day.count >= goal ? " is-goal-met" : "");
+      bar.style.height = `${(day.count / ceiling) * 100}%`;
+      col.appendChild(bar);
+      plot.appendChild(col);
+
+      const label = document.createElement("span");
+      label.className = "chart__label";
+      label.textContent = DAY_INITIALS[new Date(day.date + "T00:00:00").getDay()];
+      labels.appendChild(label);
+    });
+
+    el.statsChart.appendChild(plot);
+    el.statsChart.appendChild(labels);
+  }
+
+  /* ---------------- Settings ---------------- */
+  function renderSettings() {
+    Object.keys(SETTING_INPUTS).forEach((key) => {
+      SETTING_INPUTS[key].value = state.settings[key];
+    });
+    el.setAlarm.value = state.settings.alarmSound;
+    el.setVolume.value = Math.round(state.settings.alarmVolume * 100);
+    el.setVolume.disabled = state.settings.alarmSound === "none";
+    el.setAutoStart.checked = state.settings.autoStart;
+    el.setNotify.checked = state.settings.notify;
+  }
+
+  function updateSetting(key, value) {
+    state.settings = normalizeSettings(Object.assign({}, state.settings, { [key]: value }));
+    saveState(state);
+
+    /* A duration change only takes effect on an idle timer of that mode —
+       never yank time out from under a running session. */
+    if (!running && MODE_SETTING_KEYS[mode] === key) {
+      totalDuration = durationFor(mode);
+      remaining = totalDuration;
+      renderTimer();
+    }
+
+    renderSettings();
+    renderStats();
+    renderStatsPanel();
+  }
+
+  function stepSetting(key, delta) {
+    const [min, max] = SETTING_RANGES[key];
+    updateSetting(key, clampInt(state.settings[key] + delta, min, max));
+  }
+
   /* ---------------- Rendering ---------------- */
   function renderTimer() {
     el.timeDisplay.textContent = formatTime(remaining);
@@ -472,6 +714,7 @@
     el.dialProgress.style.strokeDashoffset = `${offset}`;
     el.startPauseBtn.textContent = running ? "Pause" : remaining < totalDuration ? "Resume" : "Start";
     document.title = `${formatTime(remaining)} · ${MODE_LABELS[mode]} — Dial`;
+    pushTimerToShell();
   }
 
   function renderModeButtons() {
@@ -489,7 +732,8 @@
 
   function renderStats() {
     el.statStreak.textContent = state.currentStreak;
-    el.statToday.textContent = state.todayCount;
+    el.statToday.textContent = `${state.todayCount}/${state.settings.dailyGoal}`;
+    el.statToday.classList.toggle("is-goal-met", state.todayCount >= state.settings.dailyGoal);
     el.statLevel.textContent = state.level;
     const needed = xpForLevel(state.level);
     el.xpText.textContent = `${state.xp} / ${needed}`;
@@ -504,11 +748,14 @@
     renderLog();
     renderTodos();
     renderSuggestions();
+    renderStatsPanel();
+    renderSettings();
   }
 
   /* ---------------- Timer engine ---------------- */
   function setMode(newMode, opts = {}) {
     if (running && !opts.force) return;
+    if (!opts.keepActiveTodo) releaseActiveTodo(elapsedSeconds());
     mode = newMode;
     state.lastMode = newMode;
     totalDuration = durationFor(mode);
@@ -516,7 +763,6 @@
     running = false;
     endTime = null;
     sessionStart = null;
-    if (!opts.keepActiveTodo) activeTodoId = null;
     clearTick();
     saveState(state);
     clearTimerSnapshot();
@@ -555,14 +801,16 @@
 
   function start() {
     if (running) return;
+    requestNotificationPermission();
     if (remaining <= 0) remaining = totalDuration;
     running = true;
     endTime = Date.now() + remaining * 1000;
-    if (mode === "focus" && !sessionStart) sessionStart = new Date();
+    if (!sessionStart) sessionStart = new Date();
     clearTick();
     tickHandle = setInterval(tick, 250);
     renderTimer();
     renderModeButtons();
+    renderTodos();
     saveTimerSnapshot();
   }
 
@@ -579,12 +827,15 @@
   function reset() {
     running = false;
     clearTick();
+    releaseActiveTodo(elapsedSeconds());
     remaining = totalDuration;
     endTime = null;
     sessionStart = null;
+    saveState(state);
+    clearTimerSnapshot();
     renderTimer();
     renderModeButtons();
-    clearTimerSnapshot();
+    renderTodos();
   }
 
   function ensureTodayFresh() {
@@ -598,13 +849,14 @@
   function completeSession() {
     running = false;
     clearTick();
-    playBeep();
+    playAlarm();
     clearTimerSnapshot();
 
     const wasWork = mode === "focus" || mode === "custom";
     const startedAt = sessionStart || new Date();
     const finishedTodoId = activeTodoId;
-    activeTodoId = null;
+    const sessionMinutes = Math.round(totalDuration / 60);
+    releaseActiveTodo(totalDuration);
 
     if (wasWork) {
       ensureTodayFresh();
@@ -628,7 +880,7 @@
         }
       }
       if (!taskName) taskName = el.taskInput.value.trim().slice(0, 60);
-      addLogEntry(taskName, xpEarned);
+      addLogEntry(taskName, xpEarned, sessionMinutes, mode);
 
       state.badges = evaluateBadges(state.badges, {
         totalSessions: state.totalSessions,
@@ -641,16 +893,29 @@
       el.taskInput.value = "";
 
       const nextMode = nextBreakMode(state.totalSessions);
+      const label = finishedTodoId ? "Task" : "Focus session";
       saveState(state);
       renderAll();
-      announce(`${finishedTodoId ? "Task" : "Focus session"} complete. ${xpEarned} XP earned. ${MODE_LABELS[nextMode]} starting.`);
+      announce(`${label} complete. ${xpEarned} XP earned. ${MODE_LABELS[nextMode]} starting.`);
+      notifySessionEnd(
+        `${label} complete · +${xpEarned} XP`,
+        `${taskName || "Focus"} — ${MODE_LABELS[nextMode].toLowerCase()} up next.`
+      );
       setMode(nextMode, { force: true });
+      autoStartNext();
     } else {
+      const finishedLabel = MODE_LABELS[mode];
       saveState(state);
       renderAll();
-      announce(`${MODE_LABELS[mode]} complete. Back to Focus.`);
+      announce(`${finishedLabel} complete. Back to Focus.`);
+      notifySessionEnd(`${finishedLabel} over`, "Back to focus.");
       setMode("focus", { force: true });
+      autoStartNext();
     }
+  }
+
+  function autoStartNext() {
+    if (state.settings.autoStart) start();
   }
 
   /* ---------------- Event wiring ---------------- */
@@ -677,6 +942,50 @@
   });
 
   el.clearDoneBtn.addEventListener("click", clearDoneTodos);
+
+  el.tabs.forEach((tab) => {
+    tab.addEventListener("click", () => selectTab(tab.dataset.pane));
+  });
+
+  el.openSettings.addEventListener("click", () => setSettingsOpen(true));
+  el.closeSettings.addEventListener("click", () => setSettingsOpen(false));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !el.settingsSheet.hidden) setSettingsOpen(false);
+  });
+
+  el.stepButtons.forEach((btn) => {
+    const [key, delta] = btn.dataset.step.split(":");
+    btn.addEventListener("click", () => stepSetting(key, Number(delta)));
+  });
+
+  Object.keys(SETTING_INPUTS).forEach((key) => {
+    SETTING_INPUTS[key].addEventListener("change", () => updateSetting(key, SETTING_INPUTS[key].value));
+  });
+
+  el.setAlarm.addEventListener("change", () => {
+    updateSetting("alarmSound", el.setAlarm.value);
+    playAlarm();
+  });
+
+  el.setVolume.addEventListener("change", () => {
+    updateSetting("alarmVolume", clampVolume(Number(el.setVolume.value) / 100));
+    playAlarm();
+  });
+
+  el.setAutoStart.addEventListener("change", () => updateSetting("autoStart", el.setAutoStart.checked));
+
+  el.setNotify.addEventListener("change", () => {
+    updateSetting("notify", el.setNotify.checked);
+    requestNotificationPermission();
+  });
+
+  if (shell && shell.onCommand) {
+    shell.onCommand((action) => {
+      if (action === "toggle") running ? pause() : start();
+      else if (action === "reset") reset();
+    });
+  }
 
   el.taskInput.addEventListener("input", () => {
     if (el.taskInput.value.length > 60) {

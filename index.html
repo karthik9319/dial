@@ -14,22 +14,26 @@
 
 <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
 
-<button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
-  <span class="theme-toggle__icon" aria-hidden="true">◐</span>
-</button>
-
 <main class="console">
 
   <div class="console__fixed">
-    <header class="console__header">
-      <h1 class="brand">DIAL</h1>
-      <p class="brand__sub">focus console</p>
-    </header>
+
+    <div class="topbar">
+      <h1 class="topbar__brand">DIAL</h1>
+      <div class="topbar__actions">
+        <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <span aria-hidden="true">◐</span>
+        </button>
+        <button id="openSettings" class="icon-btn" type="button" aria-label="Open settings" title="Settings">
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </div>
+    </div>
 
     <section class="modes" role="tablist" aria-label="Timer mode">
       <button class="mode-btn" data-mode="focus" role="tab" aria-selected="true">Focus</button>
-      <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short Break</button>
-      <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long Break</button>
+      <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short</button>
+      <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long</button>
       <button class="mode-btn" data-mode="custom" role="tab" aria-selected="false">Custom</button>
     </section>
 
@@ -88,33 +92,141 @@
         <div class="xp-bar__fill" id="xpFill"></div>
       </div>
     </section>
+
   </div>
 
-  <div class="console__scroll">
-    <section class="panel todo-panel">
-      <h2 class="panel__title">To‑Do</h2>
-      <form class="todo-add" id="todoForm">
-        <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
-        <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
-        <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
-      </form>
-      <div class="todo-list" id="todoList">
-        <p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p>
-      </div>
-      <button type="button" class="todo-clear" id="clearDoneBtn" hidden>Clear completed</button>
-    </section>
+  <div class="tabs" role="tablist" aria-label="Panels">
+    <button class="tab" type="button" role="tab" id="tabTasks" aria-controls="paneTasks" aria-selected="true" data-pane="paneTasks">Tasks</button>
+    <button class="tab" type="button" role="tab" id="tabStats" aria-controls="paneStats" aria-selected="false" data-pane="paneStats">Stats</button>
+    <button class="tab" type="button" role="tab" id="tabLog" aria-controls="paneLog" aria-selected="false" data-pane="paneLog">Log</button>
+  </div>
 
-    <section class="panel badges-panel">
-      <h2 class="panel__title">Badges</h2>
-      <div class="badges" id="badgesRow"></div>
-    </section>
+  <div class="panes">
 
-    <section class="panel log-panel">
-      <h2 class="panel__title">Session Log</h2>
-      <div class="log" id="sessionLog">
-        <p class="log__empty" id="logEmpty">No sessions logged yet. Start your first focus session.</p>
+    <div class="pane" id="paneTasks" role="tabpanel" aria-labelledby="tabTasks">
+      <section class="panel">
+        <form class="todo-add" id="todoForm">
+          <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
+          <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
+          <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
+        </form>
+        <div class="todo-list" id="todoList">
+          <p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p>
+        </div>
+        <button type="button" class="todo-clear" id="clearDoneBtn" hidden>Clear completed</button>
+      </section>
+    </div>
+
+    <div class="pane" id="paneStats" role="tabpanel" aria-labelledby="tabStats" hidden>
+      <section class="panel">
+        <div class="stats-figures">
+          <div class="figure">
+            <div class="figure__value" id="figTodayCount">0</div>
+            <div class="figure__label">Today</div>
+            <div class="figure__sub" id="figTodayMinutes">0m</div>
+          </div>
+          <div class="figure">
+            <div class="figure__value" id="figWeekCount">0</div>
+            <div class="figure__label">7 days</div>
+            <div class="figure__sub" id="figWeekMinutes">0m</div>
+          </div>
+          <div class="figure">
+            <div class="figure__value" id="figMonthCount">0</div>
+            <div class="figure__label">30 days</div>
+            <div class="figure__sub" id="figMonthMinutes">0m</div>
+          </div>
+        </div>
+        <div class="chart" id="statsChart"></div>
+        <p class="chart__note">Sessions per day · dashed line is your daily goal</p>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__title">Badges</h2>
+        <div class="badges" id="badgesRow"></div>
+      </section>
+    </div>
+
+    <div class="pane" id="paneLog" role="tabpanel" aria-labelledby="tabLog" hidden>
+      <section class="panel">
+        <div class="log" id="sessionLog">
+          <p class="log__empty" id="logEmpty">No sessions logged yet. Start your first focus session.</p>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+  <div class="sheet" id="settingsSheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+    <div class="sheet__head">
+      <button class="icon-btn" type="button" id="closeSettings" aria-label="Close settings">
+        <span aria-hidden="true">‹</span>
+      </button>
+      <h2 class="sheet__title" id="settingsTitle">Settings</h2>
+    </div>
+    <div class="sheet__body">
+
+      <div class="setting-row">
+        <label for="setFocus">Focus</label>
+        <div class="stepper">
+          <button type="button" class="stepper__btn" data-step="focusMinutes:-1" aria-label="Decrease focus minutes">−</button>
+          <input type="number" id="setFocus" class="stepper__input" min="1" max="120" inputmode="numeric">
+          <button type="button" class="stepper__btn" data-step="focusMinutes:1" aria-label="Increase focus minutes">+</button>
+        </div>
       </div>
-    </section>
+
+      <div class="setting-row">
+        <label for="setShort">Short break</label>
+        <div class="stepper">
+          <button type="button" class="stepper__btn" data-step="shortMinutes:-1" aria-label="Decrease short break minutes">−</button>
+          <input type="number" id="setShort" class="stepper__input" min="1" max="60" inputmode="numeric">
+          <button type="button" class="stepper__btn" data-step="shortMinutes:1" aria-label="Increase short break minutes">+</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label for="setLong">Long break</label>
+        <div class="stepper">
+          <button type="button" class="stepper__btn" data-step="longMinutes:-1" aria-label="Decrease long break minutes">−</button>
+          <input type="number" id="setLong" class="stepper__input" min="1" max="60" inputmode="numeric">
+          <button type="button" class="stepper__btn" data-step="longMinutes:1" aria-label="Increase long break minutes">+</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label for="setGoal">Daily goal</label>
+        <div class="stepper">
+          <button type="button" class="stepper__btn" data-step="dailyGoal:-1" aria-label="Decrease daily goal">−</button>
+          <input type="number" id="setGoal" class="stepper__input" min="1" max="24" inputmode="numeric">
+          <button type="button" class="stepper__btn" data-step="dailyGoal:1" aria-label="Increase daily goal">+</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label for="setAlarm">Alarm</label>
+        <select id="setAlarm" class="setting-select">
+          <option value="chime">Chime</option>
+          <option value="bell">Bell</option>
+          <option value="pulse">Pulse</option>
+          <option value="none">Silent</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="setVolume">Volume</label>
+        <input type="range" id="setVolume" class="setting-range" min="0" max="100" step="5">
+      </div>
+
+      <label class="setting-check">
+        <input type="checkbox" id="setAutoStart">
+        <span>Auto-start next session</span>
+      </label>
+
+      <label class="setting-check">
+        <input type="checkbox" id="setNotify">
+        <span>Notify when a session ends</span>
+      </label>
+
+    </div>
   </div>
 
 </main>

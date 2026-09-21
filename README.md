@@ -26,8 +26,10 @@ the app is fully functional offline with system-font fallbacks if there's no net
   triggers a long break; the others trigger a short break. Mode can only be changed while the
   timer is paused or stopped.
 - **To-do list**: each task carries an estimated duration. Hitting ▶ loads it into the timer as a
-  Custom session and starts it; finishing checks the task off. Time actually spent accumulates on
-  the task (including sessions you reset partway), so estimates can be compared against reality.
+  Custom session and starts it. Finishing the session — or ticking the checkbox — takes the task
+  off the list; the Session Log keeps the record. Time actually spent accumulates on a task while
+  it's still listed (including sessions you reset partway), so an estimate can be compared against
+  reality before the task is cleared.
 - **XP**: +20 XP per completed focus or custom session, plus a streak bonus of +2 XP per current
   streak day (capped at +20). Breaks earn no XP.
 - **Levels**: level `N` requires `100 + (N-1)*40` XP; leftover XP carries into the next level.

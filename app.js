@@ -79,7 +79,10 @@
     const state = Object.assign(defaultState(), stored || {});
     state.badges = Object.assign({}, stored && stored.badges);
     state.sessions = capSessions(Array.isArray(state.sessions) ? state.sessions : []);
-    state.todos = capTodos(Array.isArray(state.todos) ? state.todos : []);
+    /* Finished tasks used to linger in the list with a `done` flag; they now
+       leave it outright, so drop any left over from that older format. */
+    const todos = (Array.isArray(state.todos) ? state.todos : []).filter((t) => t && !t.done);
+    state.todos = capTodos(todos);
     state.customMinutes = clampMinutes(state.customMinutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
     state.settings = normalizeSettings(state.settings);
 
@@ -200,7 +203,6 @@
     todoInput: document.getElementById("todoInput"),
     todoMinutesInput: document.getElementById("todoMinutesInput"),
     todoList: document.getElementById("todoList"),
-    clearDoneBtn: document.getElementById("clearDoneBtn"),
     taskSuggestions: document.getElementById("taskSuggestions"),
     dialProgress: document.getElementById("dialProgress"),
     timeDisplay: document.getElementById("timeDisplay"),
@@ -338,6 +340,11 @@
      page every call here is a no-op and the app behaves as it always has. */
   const shell = window.dialBridge || null;
 
+  /* In the Electron wrapper the window itself is the frame, so the console
+     drops its card treatment and fills the window edge to edge. Opened as a
+     plain web page it stays a centred card on the background. */
+  if (shell) document.documentElement.classList.add("is-desktop");
+
   function notifySessionEnd(title, body) {
     if (!state.settings.notify) return;
     if (shell && shell.notify) {
@@ -408,7 +415,6 @@
       id: makeTodoId(),
       text: trimmed,
       minutes: clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES),
-      done: false,
       createdAt: new Date().toISOString(),
     });
     state.todos = capTodos(state.todos);
@@ -416,23 +422,10 @@
     renderTodos();
   }
 
-  function toggleTodoDone(id) {
-    const todo = state.todos.find((t) => t.id === id);
-    if (!todo) return;
-    todo.done = !todo.done;
-    saveState(state);
-    renderTodos();
-  }
-
-  function deleteTodo(id) {
+  /* Finishing a task takes it off the list — the Session Log keeps the record. */
+  function removeTodo(id) {
     state.todos = state.todos.filter((t) => t.id !== id);
     if (activeTodoId === id) activeTodoId = null;
-    saveState(state);
-    renderTodos();
-  }
-
-  function clearDoneTodos() {
-    state.todos = state.todos.filter((t) => !t.done);
     saveState(state);
     renderTodos();
   }
@@ -440,7 +433,7 @@
   function startTodo(id) {
     if (running) return;
     const todo = state.todos.find((t) => t.id === id);
-    if (!todo || todo.done) return;
+    if (!todo) return;
     state.customMinutes = todo.minutes;
     saveState(state);
     setMode("custom", { keepActiveTodo: true });
@@ -476,23 +469,18 @@
       empty.className = "todo-empty";
       empty.textContent = "No tasks yet. Add one above.";
       el.todoList.appendChild(empty);
-      el.clearDoneBtn.hidden = true;
       return;
     }
 
-    let anyDone = false;
     state.todos.forEach((todo) => {
-      if (todo.done) anyDone = true;
-
       const row = document.createElement("div");
-      row.className = "todo-item" + (todo.done ? " is-done" : "");
+      row.className = "todo-item";
 
       const check = document.createElement("button");
       check.type = "button";
       check.className = "todo-item__check";
-      check.setAttribute("aria-label", todo.done ? `Mark "${todo.text}" not done` : `Mark "${todo.text}" done`);
-      check.textContent = todo.done ? "✓" : "";
-      check.addEventListener("click", () => toggleTodoDone(todo.id));
+      check.setAttribute("aria-label", `Mark "${todo.text}" done`);
+      check.addEventListener("click", () => removeTodo(todo.id));
 
       const main = document.createElement("div");
       main.className = "todo-item__main";
@@ -518,7 +506,7 @@
       play.className = "todo-item__play";
       play.setAttribute("aria-label", `Start a ${todo.minutes} minute timer for ${todo.text}`);
       play.textContent = "▶";
-      play.disabled = running || todo.done;
+      play.disabled = running;
       play.addEventListener("click", () => startTodo(todo.id));
 
       const del = document.createElement("button");
@@ -527,7 +515,7 @@
       del.setAttribute("aria-label", `Delete "${todo.text}"`);
       del.textContent = "✕";
       del.disabled = running && activeTodoId === todo.id;
-      del.addEventListener("click", () => deleteTodo(todo.id));
+      del.addEventListener("click", () => removeTodo(todo.id));
 
       row.appendChild(check);
       row.appendChild(main);
@@ -535,8 +523,6 @@
       row.appendChild(del);
       el.todoList.appendChild(row);
     });
-
-    el.clearDoneBtn.hidden = !anyDone;
   }
 
   /* ---------------- Task autosuggest ---------------- */
@@ -875,8 +861,8 @@
       if (finishedTodoId) {
         const todo = state.todos.find((t) => t.id === finishedTodoId);
         if (todo) {
-          todo.done = true;
           taskName = todo.text;
+          state.todos = state.todos.filter((t) => t.id !== finishedTodoId);
         }
       }
       if (!taskName) taskName = el.taskInput.value.trim().slice(0, 60);
@@ -940,8 +926,6 @@
     el.todoInput.value = "";
     el.todoInput.focus();
   });
-
-  el.clearDoneBtn.addEventListener("click", clearDoneTodos);
 
   el.tabs.forEach((tab) => {
     tab.addEventListener("click", () => selectTab(tab.dataset.pane));

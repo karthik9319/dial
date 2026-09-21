@@ -134,7 +134,21 @@ body {
   border-color: var(--brass);
 }
 
-/* ---------- Console panel ---------- */
+/* ---------- Console panel ----------
+   Desktop: the OS window is the frame, so fill it. Web: a centred card. */
+.is-desktop body {
+  padding: 0;
+  background: var(--panel);
+}
+
+.is-desktop .console {
+  max-width: none;
+  height: 100vh;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .console {
   position: relative; /* containing block for the settings sheet */
   width: 100%;
@@ -253,7 +267,6 @@ body {
   justify-content: space-between;
   gap: 10px;
 }
-
 
 .custom-duration__label {
   font-size: 10.5px;
@@ -521,7 +534,6 @@ body {
   display: flex;
   flex-direction: column;
 }
-
 
 .sheet__head {
   flex: none;
@@ -828,12 +840,6 @@ body {
   padding: 0;
 }
 
-.todo-item.is-done .todo-item__check {
-  background: var(--brass);
-  border-color: var(--brass);
-  color: #201a08;
-}
-
 .todo-item__main {
   flex: 1;
   min-width: 0;
@@ -848,11 +854,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.todo-item.is-done .todo-item__text {
-  color: var(--text-dim);
-  text-decoration: line-through;
 }
 
 .todo-item__minutes {
@@ -892,24 +893,6 @@ body {
   opacity: 0.35;
   cursor: not-allowed;
 }
-
-.todo-clear {
-  margin-top: 8px;
-  width: 100%;
-  padding: 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--hairline);
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.todo-clear:hover {
-  color: var(--text);
-  border-color: var(--text-dim);
-}
-
 
 /* ---------- Session log ---------- */
 .log {

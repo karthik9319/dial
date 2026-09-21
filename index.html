@@ -20,98 +20,102 @@
 
 <main class="console">
 
-  <header class="console__header">
-    <h1 class="brand">DIAL</h1>
-    <p class="brand__sub">focus console</p>
-  </header>
+  <div class="console__fixed">
+    <header class="console__header">
+      <h1 class="brand">DIAL</h1>
+      <p class="brand__sub">focus console</p>
+    </header>
 
-  <section class="modes" role="tablist" aria-label="Timer mode">
-    <button class="mode-btn" data-mode="focus" role="tab" aria-selected="true">Focus</button>
-    <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short Break</button>
-    <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long Break</button>
-    <button class="mode-btn" data-mode="custom" role="tab" aria-selected="false">Custom</button>
-  </section>
+    <section class="modes" role="tablist" aria-label="Timer mode">
+      <button class="mode-btn" data-mode="focus" role="tab" aria-selected="true">Focus</button>
+      <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short Break</button>
+      <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long Break</button>
+      <button class="mode-btn" data-mode="custom" role="tab" aria-selected="false">Custom</button>
+    </section>
 
-  <div class="custom-duration" id="customDuration" hidden>
-    <label for="customMinutesInput" class="custom-duration__label">Minutes</label>
-    <div class="stepper">
-      <button type="button" class="stepper__btn" id="customMinusBtn" aria-label="Decrease minutes">−</button>
-      <input type="number" id="customMinutesInput" class="stepper__input" min="1" max="120" value="10" inputmode="numeric">
-      <button type="button" class="stepper__btn" id="customPlusBtn" aria-label="Increase minutes">+</button>
+    <div class="custom-duration" id="customDuration" hidden>
+      <label for="customMinutesInput" class="custom-duration__label">Minutes</label>
+      <div class="stepper">
+        <button type="button" class="stepper__btn" id="customMinusBtn" aria-label="Decrease minutes">−</button>
+        <input type="number" id="customMinutesInput" class="stepper__input" min="1" max="120" value="10" inputmode="numeric">
+        <button type="button" class="stepper__btn" id="customPlusBtn" aria-label="Increase minutes">+</button>
+      </div>
     </div>
+
+    <div class="task-input-wrap">
+      <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="What are you focusing on?" autocomplete="off" list="taskSuggestions">
+    </div>
+
+    <datalist id="taskSuggestions"></datalist>
+
+    <section class="dial-wrap">
+      <svg class="dial" viewBox="0 0 300 300" aria-hidden="true">
+        <circle class="dial__track" cx="150" cy="150" r="130" />
+        <circle class="dial__progress" id="dialProgress" cx="150" cy="150" r="130" />
+      </svg>
+      <div class="dial__center">
+        <div class="dial__time" id="timeDisplay">25:00</div>
+        <div class="dial__label" id="modeLabel">Focus</div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <button id="startPauseBtn" class="btn btn--primary" type="button">Start</button>
+      <button id="resetBtn" class="btn" type="button">Reset</button>
+    </section>
+
+    <section class="stats-row">
+      <div class="stat">
+        <div class="stat__value" id="statStreak">0</div>
+        <div class="stat__label">Streak</div>
+      </div>
+      <div class="stat">
+        <div class="stat__value" id="statToday">0</div>
+        <div class="stat__label">Today</div>
+      </div>
+      <div class="stat">
+        <div class="stat__value" id="statLevel">1</div>
+        <div class="stat__label">Level</div>
+      </div>
+    </section>
+
+    <section class="xp-panel">
+      <div class="xp-panel__head">
+        <span>XP</span>
+        <span id="xpText">0 / 100</span>
+      </div>
+      <div class="xp-bar">
+        <div class="xp-bar__fill" id="xpFill"></div>
+      </div>
+    </section>
   </div>
 
-  <div class="task-input-wrap">
-    <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="What are you focusing on?" autocomplete="off" list="taskSuggestions">
+  <div class="console__scroll">
+    <section class="panel todo-panel">
+      <h2 class="panel__title">To‑Do</h2>
+      <form class="todo-add" id="todoForm">
+        <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
+        <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
+        <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
+      </form>
+      <div class="todo-list" id="todoList">
+        <p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p>
+      </div>
+      <button type="button" class="todo-clear" id="clearDoneBtn" hidden>Clear completed</button>
+    </section>
+
+    <section class="panel badges-panel">
+      <h2 class="panel__title">Badges</h2>
+      <div class="badges" id="badgesRow"></div>
+    </section>
+
+    <section class="panel log-panel">
+      <h2 class="panel__title">Session Log</h2>
+      <div class="log" id="sessionLog">
+        <p class="log__empty" id="logEmpty">No sessions logged yet. Start your first focus session.</p>
+      </div>
+    </section>
   </div>
-
-  <datalist id="taskSuggestions"></datalist>
-
-  <section class="dial-wrap">
-    <svg class="dial" viewBox="0 0 300 300" aria-hidden="true">
-      <circle class="dial__track" cx="150" cy="150" r="130" />
-      <circle class="dial__progress" id="dialProgress" cx="150" cy="150" r="130" />
-    </svg>
-    <div class="dial__center">
-      <div class="dial__time" id="timeDisplay">25:00</div>
-      <div class="dial__label" id="modeLabel">Focus</div>
-    </div>
-  </section>
-
-  <section class="controls">
-    <button id="startPauseBtn" class="btn btn--primary" type="button">Start</button>
-    <button id="resetBtn" class="btn" type="button">Reset</button>
-  </section>
-
-  <section class="stats-row">
-    <div class="stat">
-      <div class="stat__value" id="statStreak">0</div>
-      <div class="stat__label">Streak</div>
-    </div>
-    <div class="stat">
-      <div class="stat__value" id="statToday">0</div>
-      <div class="stat__label">Today</div>
-    </div>
-    <div class="stat">
-      <div class="stat__value" id="statLevel">1</div>
-      <div class="stat__label">Level</div>
-    </div>
-  </section>
-
-  <section class="xp-panel">
-    <div class="xp-panel__head">
-      <span>XP</span>
-      <span id="xpText">0 / 100</span>
-    </div>
-    <div class="xp-bar">
-      <div class="xp-bar__fill" id="xpFill"></div>
-    </div>
-  </section>
-
-  <section class="panel todo-panel">
-    <h2 class="panel__title">To‑Do</h2>
-    <form class="todo-add" id="todoForm">
-      <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
-      <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
-      <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
-    </form>
-    <div class="todo-list" id="todoList">
-      <p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p>
-    </div>
-    <button type="button" class="todo-clear" id="clearDoneBtn" hidden>Clear completed</button>
-  </section>
-
-  <section class="panel badges-panel">
-    <h2 class="panel__title">Badges</h2>
-    <div class="badges" id="badgesRow"></div>
-  </section>
-
-  <section class="panel log-panel">
-    <h2 class="panel__title">Session Log</h2>
-    <div class="log" id="sessionLog">
-      <p class="log__empty" id="logEmpty">No sessions logged yet. Start your first focus session.</p>
-    </div>
-  </section>
 
 </main>
 

@@ -8,6 +8,16 @@ const path = require("path");
    from package.json's productName. */
 app.setName("Dial");
 
+/* All Dial windows share one saved-data file regardless of which folder they
+   run from (userData is keyed by app name, not path). A second instance
+   can't get a write lock on that file, so it would load blank and — on any
+   action — overwrite the real data. Refuse the second launch and just focus
+   the existing window instead. */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return;
+}
+
 const ICON_PATH = path.join(__dirname, "build", "icon.png");
 const TRAY_ICON_PATH = path.join(__dirname, "build", "trayTemplate.png");
 
@@ -126,6 +136,10 @@ ipcMain.on("dial:notify", (_event, payload) => {
   });
   notification.on("click", showWindow);
   notification.show();
+});
+
+app.on("second-instance", () => {
+  showWindow();
 });
 
 app.whenReady().then(() => {

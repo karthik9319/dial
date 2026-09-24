@@ -160,6 +160,7 @@
   let sessionStart = null;
   let pendingTaskDraft = "";
   let activeTodoId = null;
+  let editingTodoId = null;
 
   /* Resume an in-flight timer left over from before a reload/close, if any. */
   (function restoreTimer() {
@@ -426,6 +427,28 @@
   function removeTodo(id) {
     state.todos = state.todos.filter((t) => t.id !== id);
     if (activeTodoId === id) activeTodoId = null;
+    if (editingTodoId === id) editingTodoId = null;
+    saveState(state);
+    renderTodos();
+  }
+
+  function startEditTodo(id) {
+    editingTodoId = id;
+    renderTodos();
+  }
+
+  function cancelEditTodo() {
+    editingTodoId = null;
+    renderTodos();
+  }
+
+  function updateTodo(id, text, minutes) {
+    const todo = state.todos.find((t) => t.id === id);
+    if (!todo) return;
+    const trimmed = (text || "").trim().slice(0, 60);
+    if (trimmed) todo.text = trimmed;
+    todo.minutes = clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
+    editingTodoId = null;
     saveState(state);
     renderTodos();
   }
@@ -473,6 +496,11 @@
     }
 
     state.todos.forEach((todo) => {
+      if (todo.id === editingTodoId) {
+        el.todoList.appendChild(renderTodoEditRow(todo));
+        return;
+      }
+
       const row = document.createElement("div");
       row.className = "todo-item";
 
@@ -509,6 +537,14 @@
       play.disabled = running;
       play.addEventListener("click", () => startTodo(todo.id));
 
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "todo-item__edit";
+      edit.setAttribute("aria-label", `Edit "${todo.text}"`);
+      edit.textContent = "✎";
+      edit.disabled = running && activeTodoId === todo.id;
+      edit.addEventListener("click", () => startEditTodo(todo.id));
+
       const del = document.createElement("button");
       del.type = "button";
       del.className = "todo-item__delete";
@@ -520,9 +556,67 @@
       row.appendChild(check);
       row.appendChild(main);
       row.appendChild(play);
+      row.appendChild(edit);
       row.appendChild(del);
       el.todoList.appendChild(row);
     });
+  }
+
+  /** Builds the inline edit row for a to-do: text + minutes inputs with save/cancel. */
+  function renderTodoEditRow(todo) {
+    const row = document.createElement("form");
+    row.className = "todo-item todo-item--editing";
+
+    const text = document.createElement("input");
+    text.type = "text";
+    text.className = "todo-item__edit-text";
+    text.maxLength = 60;
+    text.value = todo.text;
+    text.setAttribute("aria-label", "Task name");
+
+    const minutes = document.createElement("input");
+    minutes.type = "number";
+    minutes.className = "todo-item__edit-minutes";
+    minutes.min = String(CUSTOM_MIN_MINUTES);
+    minutes.max = String(CUSTOM_MAX_MINUTES);
+    minutes.value = String(todo.minutes);
+    minutes.setAttribute("aria-label", "Minutes");
+
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "todo-item__save";
+    save.setAttribute("aria-label", "Save task");
+    save.textContent = "✓";
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "todo-item__cancel";
+    cancel.setAttribute("aria-label", "Cancel editing");
+    cancel.textContent = "✕";
+    cancel.addEventListener("click", cancelEditTodo);
+
+    row.addEventListener("submit", (e) => {
+      e.preventDefault();
+      updateTodo(todo.id, text.value, minutes.value);
+    });
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEditTodo();
+      }
+    });
+
+    row.appendChild(text);
+    row.appendChild(minutes);
+    row.appendChild(save);
+    row.appendChild(cancel);
+
+    queueMicrotask(() => {
+      text.focus();
+      text.select();
+    });
+
+    return row;
   }
 
   /* ---------------- Task autosuggest ---------------- */
@@ -846,9 +940,11 @@
 
     if (wasWork) {
       ensureTodayFresh();
-      state.currentStreak = nextStreak(state.lastSessionDate, state.currentStreak, todayStr());
-      state.lastSessionDate = todayStr();
-      state.longestStreak = Math.max(state.longestStreak, state.currentStreak);
+      if (mode === "focus") {
+        state.currentStreak = nextStreak(state.lastSessionDate, state.currentStreak, todayStr());
+        state.lastSessionDate = todayStr();
+        state.longestStreak = Math.max(state.longestStreak, state.currentStreak);
+      }
       state.todayCount += 1;
       state.totalSessions += 1;
 

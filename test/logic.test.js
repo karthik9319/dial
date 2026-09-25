@@ -11,6 +11,8 @@ const {
   nextModeAfterWork,
   isAccentUnlocked,
   nextAccentReward,
+  tokensEarnedBetween,
+  nextProgressReward,
   evaluateBadges,
   formatTime,
   capSessions,
@@ -24,16 +26,21 @@ const {
   summarizeEstimateAccuracy,
   formatMinutes,
   DEFAULT_SETTINGS,
+  DIAL_FACE_REWARDS,
+  WORKSHOP_REWARDS,
   MAX_LOGGED_SESSIONS,
   MAX_TODOS,
 } = require("../logic.js");
 
 /* ---------------- XP / levels ---------------- */
 
-test("xpForLevel follows 100 + (N-1)*40", () => {
+test("xpForLevel grows by 40 and caps at 500", () => {
   assert.equal(xpForLevel(1), 100);
   assert.equal(xpForLevel(2), 140);
   assert.equal(xpForLevel(5), 260);
+  assert.equal(xpForLevel(10), 460);
+  assert.equal(xpForLevel(11), 500);
+  assert.equal(xpForLevel(50), 500);
 });
 
 test("applyXp accumulates without leveling up when under threshold", () => {
@@ -61,6 +68,19 @@ test("focusSessionXp is 20 base plus the capped streak bonus", () => {
   assert.equal(focusSessionXp(1), 22);
   assert.equal(focusSessionXp(10), 40);
   assert.equal(focusSessionXp(100), 40);
+});
+
+test("Focus Tokens are earned once for every level reached after Level 10", () => {
+  assert.equal(tokensEarnedBetween(9, 10), 0);
+  assert.equal(tokensEarnedBetween(10, 11), 1);
+  assert.equal(tokensEarnedBetween(10, 13), 3);
+  assert.equal(tokensEarnedBetween(12, 12), 0);
+});
+
+test("the progress track leads from finishes to Chronograph to recurring tokens", () => {
+  assert.deepEqual(nextProgressReward(5), { level: 6, label: "Graphite finish", kind: "accent" });
+  assert.deepEqual(nextProgressReward(9), { level: 10, label: "Chronograph dial", kind: "dialFace" });
+  assert.deepEqual(nextProgressReward(10), { level: 11, label: "1 Focus Token", kind: "token" });
 });
 
 /* ---------------- Streaks ---------------- */
@@ -137,6 +157,13 @@ test("level_5 unlocks once level reaches 5", () => {
   assert.equal(under.level_5, undefined);
   const at = evaluateBadges({}, { totalSessions: 1, longestStreak: 1, todayCount: 1, level: 5 });
   assert.equal(at.level_5, true);
+});
+
+test("level_10 unlocks once level reaches 10", () => {
+  const under = evaluateBadges({}, { totalSessions: 1, longestStreak: 1, todayCount: 1, level: 9 });
+  assert.equal(under.level_10, undefined);
+  const at = evaluateBadges({}, { totalSessions: 1, longestStreak: 1, todayCount: 1, level: 10 });
+  assert.equal(at.level_10, true);
 });
 
 test("before_7am only unlocks when startHour is before 7", () => {
@@ -278,6 +305,8 @@ test("normalizeSettings keeps valid stored values", () => {
     alarmSound: "bell",
     alarmVolume: 0.25,
     accent: "jade",
+    dialFace: "chronograph",
+    backdrop: "aurora",
   });
   assert.equal(s.focusMinutes, 50);
   assert.equal(s.shortMinutes, 10);
@@ -288,6 +317,8 @@ test("normalizeSettings keeps valid stored values", () => {
   assert.equal(s.alarmSound, "bell");
   assert.equal(s.alarmVolume, 0.25);
   assert.equal(s.accent, "jade");
+  assert.equal(s.dialFace, "chronograph");
+  assert.equal(s.backdrop, "aurora");
 });
 
 test("normalizeSettings clamps durations into their allowed ranges", () => {
@@ -308,12 +339,21 @@ test("normalizeSettings rejects an unknown dial finish", () => {
   assert.equal(normalizeSettings({ accent: "cobalt" }).accent, "cobalt");
 });
 
+test("normalizeSettings rejects unknown dial faces and backdrops", () => {
+  assert.equal(normalizeSettings({ dialFace: "spaceship" }).dialFace, DEFAULT_SETTINGS.dialFace);
+  assert.equal(normalizeSettings({ backdrop: "lava" }).backdrop, DEFAULT_SETTINGS.backdrop);
+  assert.equal(normalizeSettings({ alarmSound: "gong" }).alarmSound, "gong");
+});
+
 test("dial finishes unlock by level and expose the next reward", () => {
   assert.equal(isAccentUnlocked("brass", 1), true);
   assert.equal(isAccentUnlocked("copper", 1), false);
   assert.equal(isAccentUnlocked("copper", 2), true);
   assert.deepEqual(nextAccentReward(3), { id: "cobalt", label: "Cobalt", level: 4 });
-  assert.equal(nextAccentReward(5), null);
+  assert.deepEqual(nextAccentReward(5), { id: "graphite", label: "Graphite", level: 6 });
+  assert.equal(nextAccentReward(9), null);
+  assert.deepEqual(DIAL_FACE_REWARDS[1], { id: "chronograph", label: "Chronograph", level: 10 });
+  assert.equal(WORKSHOP_REWARDS.length, 5);
 });
 
 test("normalizeSettings coerces truthy/falsy toggles to real booleans", () => {

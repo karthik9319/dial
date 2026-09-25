@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 
@@ -259,8 +259,25 @@
           <option value="chime">Chime</option>
           <option value="bell">Bell</option>
           <option value="pulse">Pulse</option>
+          <option value="gong">Soft Gong · Workshop</option>
           <option value="none">Silent</option>
         </select>
+      </div>
+
+      <div class="setting-row setting-row--stacked">
+        <div>
+          <label for="setDialFace">Dial face</label>
+          <p class="setting-help">Chronograph unlocks at Level 10.</p>
+        </div>
+        <select id="setDialFace" class="setting-select"></select>
+      </div>
+
+      <div class="setting-row setting-row--stacked">
+        <div>
+          <label for="setBackdrop">Backdrop</label>
+          <p class="setting-help">Collect more in the Workshop.</p>
+        </div>
+        <select id="setBackdrop" class="setting-select"></select>
       </div>
 
       <div class="setting-row setting-row--stacked">
@@ -285,6 +302,19 @@
         <input type="checkbox" id="setNotify">
         <span>Notify when a session ends</span>
       </label>
+
+      <div class="settings-divider"></div>
+
+      <section class="workshop" aria-labelledby="workshopTitle">
+        <div class="workshop__head">
+          <div>
+            <h3 class="settings-subtitle" id="workshopTitle">Workshop</h3>
+            <p class="setting-help setting-help--wide" id="workshopHelp">Unlocks at Level 10. Level 11 awards your first Focus Token.</p>
+          </div>
+          <div class="token-pill" aria-label="Focus Token balance"><span aria-hidden="true">◆</span> <span id="workshopBalance">0</span></div>
+        </div>
+        <div class="workshop__list" id="workshopList"></div>
+      </section>
 
       <div class="settings-divider"></div>
 
@@ -349,7 +379,7 @@
 
 </main>
 
-<script src="logic.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="logic.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

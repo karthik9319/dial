@@ -54,17 +54,57 @@
 :root[data-accent="jade"] { --brass: #62b890; --brass-dim: #376a58; --accent-rgb: 98, 184, 144; }
 :root[data-accent="cobalt"] { --brass: #6e9fe8; --brass-dim: #3f5f91; --accent-rgb: 110, 159, 232; }
 :root[data-accent="amethyst"] { --brass: #ad83df; --brass-dim: #665080; --accent-rgb: 173, 131, 223; }
+:root[data-accent="graphite"] { --brass: #aab1bd; --brass-dim: #5f6672; --accent-rgb: 170, 177, 189; }
+:root[data-accent="rose"] { --brass: #d99687; --brass-dim: #82594f; --accent-rgb: 217, 150, 135; }
+:root[data-accent="frost"] { --brass: #80cbd8; --brass-dim: #477680; --accent-rgb: 128, 203, 216; }
+:root[data-accent="ember"] { --brass: #e37a42; --brass-dim: #87492f; --accent-rgb: 227, 122, 66; }
 
 :root[data-theme="light"][data-accent="copper"] { --brass: #a84f24; --brass-dim: #d6aa93; --accent-rgb: 168, 79, 36; }
 :root[data-theme="light"][data-accent="jade"] { --brass: #277958; --brass-dim: #9bc8b5; --accent-rgb: 39, 121, 88; }
 :root[data-theme="light"][data-accent="cobalt"] { --brass: #3268b4; --brass-dim: #a8bde0; --accent-rgb: 50, 104, 180; }
 :root[data-theme="light"][data-accent="amethyst"] { --brass: #7245a6; --brass-dim: #c1abd8; --accent-rgb: 114, 69, 166; }
+:root[data-theme="light"][data-accent="graphite"] { --brass: #59616d; --brass-dim: #bdc1c8; --accent-rgb: 89, 97, 109; }
+:root[data-theme="light"][data-accent="rose"] { --brass: #a75043; --brass-dim: #dcb0a8; --accent-rgb: 167, 80, 67; }
+:root[data-theme="light"][data-accent="frost"] { --brass: #287888; --brass-dim: #a5ced5; --accent-rgb: 40, 120, 136; }
+:root[data-theme="light"][data-accent="ember"] { --brass: #af4d1e; --brass-dim: #dfad94; --accent-rgb: 175, 77, 30; }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"])[data-accent="copper"] { --brass: #a84f24; --brass-dim: #d6aa93; --accent-rgb: 168, 79, 36; }
   :root:not([data-theme="dark"])[data-accent="jade"] { --brass: #277958; --brass-dim: #9bc8b5; --accent-rgb: 39, 121, 88; }
   :root:not([data-theme="dark"])[data-accent="cobalt"] { --brass: #3268b4; --brass-dim: #a8bde0; --accent-rgb: 50, 104, 180; }
   :root:not([data-theme="dark"])[data-accent="amethyst"] { --brass: #7245a6; --brass-dim: #c1abd8; --accent-rgb: 114, 69, 166; }
+  :root:not([data-theme="dark"])[data-accent="graphite"] { --brass: #59616d; --brass-dim: #bdc1c8; --accent-rgb: 89, 97, 109; }
+  :root:not([data-theme="dark"])[data-accent="rose"] { --brass: #a75043; --brass-dim: #dcb0a8; --accent-rgb: 167, 80, 67; }
+  :root:not([data-theme="dark"])[data-accent="frost"] { --brass: #287888; --brass-dim: #a5ced5; --accent-rgb: 40, 120, 136; }
+  :root:not([data-theme="dark"])[data-accent="ember"] { --brass: #af4d1e; --brass-dim: #dfad94; --accent-rgb: 175, 77, 30; }
+}
+
+/* Collectible backdrops remain deliberately subtle so timer readability wins. */
+:root[data-backdrop="midnight"] body {
+  background: radial-gradient(circle at 50% -10%, #283449 0%, #10131a 68%);
+}
+
+:root[data-backdrop="midnight"] .console {
+  background-image: linear-gradient(160deg, rgba(61, 83, 120, 0.12), transparent 45%);
+}
+
+:root[data-backdrop="vellum"] body {
+  background: radial-gradient(circle at 20% 0%, #f2dfb9 0%, #b79868 72%);
+}
+
+:root[data-backdrop="vellum"] .console {
+  background-image: linear-gradient(135deg, rgba(214, 177, 109, 0.13), transparent 52%);
+}
+
+:root[data-backdrop="aurora"] body {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(66, 173, 145, 0.42), transparent 38%),
+    radial-gradient(circle at 85% 15%, rgba(98, 119, 215, 0.36), transparent 42%),
+    #10151d;
+}
+
+:root[data-backdrop="aurora"] .console {
+  background-image: linear-gradient(145deg, rgba(89, 194, 165, 0.10), rgba(106, 107, 205, 0.08) 65%, transparent);
 }
 
 * { box-sizing: border-box; }
@@ -401,7 +441,32 @@ body {
   aspect-ratio: 1 / 1;
 }
 
+.dial-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  z-index: 0;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+:root[data-dial-face="chronograph"] .dial-wrap::before,
+:root[data-dial-face="precision"] .dial-wrap::before {
+  opacity: 0.68;
+  background: repeating-conic-gradient(from -1deg, var(--brass) 0 1deg, transparent 1deg 30deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 75%, #000 76% 83%, transparent 84%);
+  mask: radial-gradient(circle, transparent 0 75%, #000 76% 83%, transparent 84%);
+}
+
+:root[data-dial-face="precision"] .dial-wrap::before {
+  opacity: 0.52;
+  background: repeating-conic-gradient(from -0.5deg, var(--brass) 0 0.7deg, transparent 0.7deg 6deg);
+}
+
 .dial {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   transform: rotate(-90deg);
@@ -431,6 +496,7 @@ body {
   justify-content: center;
   gap: 4px;
   text-align: center;
+  z-index: 2;
 }
 
 .dial__time {
@@ -919,6 +985,91 @@ body {
 
 .settings-action:hover {
   border-color: var(--brass);
+}
+
+/* ---------- Focus Token workshop ---------- */
+.workshop__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.token-pill {
+  flex: none;
+  min-width: 48px;
+  padding: 5px 7px;
+  border: 1px solid var(--brass-dim);
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.workshop__list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.workshop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 7px 8px 7px 11px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--brass-dim);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+}
+
+.workshop-item.is-owned {
+  border-left-color: var(--brass);
+}
+
+.workshop-item__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.workshop-item__name {
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.workshop-item__description {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 9.5px;
+  line-height: 1.3;
+}
+
+.workshop-item__buy {
+  flex: none;
+  min-width: 60px;
+  min-height: 31px;
+  padding: 5px 7px;
+  border: 1px solid var(--brass);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.workshop-item__buy:disabled {
+  border-color: var(--hairline);
+  color: var(--text-dim);
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 /* ---------- Badges ---------- */

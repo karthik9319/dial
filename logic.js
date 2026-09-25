@@ -22,7 +22,7 @@
     long: "longMinutes",
   };
 
-  const ALARM_SOUNDS = ["chime", "bell", "pulse", "none"];
+  const ALARM_SOUNDS = ["chime", "bell", "pulse", "gong", "none"];
 
   const ACCENT_REWARDS = [
     { id: "brass", label: "Brass", level: 1 },
@@ -30,7 +30,27 @@
     { id: "jade", label: "Jade", level: 3 },
     { id: "cobalt", label: "Cobalt", level: 4 },
     { id: "amethyst", label: "Amethyst", level: 5 },
+    { id: "graphite", label: "Graphite", level: 6 },
+    { id: "rose", label: "Rose Gold", level: 7 },
+    { id: "frost", label: "Frost", level: 8 },
+    { id: "ember", label: "Ember", level: 9 },
   ];
+
+  const DIAL_FACE_REWARDS = [
+    { id: "classic", label: "Classic", level: 1 },
+    { id: "chronograph", label: "Chronograph", level: 10 },
+  ];
+
+  const WORKSHOP_REWARDS = [
+    { id: "midnight_backdrop", kind: "backdrop", value: "midnight", label: "Midnight", description: "Deep blue-black backdrop", cost: 1 },
+    { id: "vellum_backdrop", kind: "backdrop", value: "vellum", label: "Vellum", description: "Warm paper backdrop", cost: 1 },
+    { id: "aurora_backdrop", kind: "backdrop", value: "aurora", label: "Aurora", description: "Subtle northern glow", cost: 2 },
+    { id: "precision_dial", kind: "dialFace", value: "precision", label: "Precision Dial", description: "Fine minute marks", cost: 2 },
+    { id: "soft_gong", kind: "alarmSound", value: "gong", label: "Soft Gong", description: "A low, gentle finish", cost: 1 },
+  ];
+
+  const BACKDROPS = ["standard", "midnight", "vellum", "aurora"];
+  const DIAL_FACES = ["classic", "chronograph", "precision"];
 
   const DEFAULT_SETTINGS = {
     focusMinutes: 25,
@@ -42,6 +62,8 @@
     alarmSound: "chime",
     alarmVolume: 0.6,
     accent: "brass",
+    dialFace: "classic",
+    backdrop: "standard",
     focusGuard: false,
     blockedApps: "Slack, Discord, Music",
   };
@@ -52,6 +74,7 @@
     { id: "streak_10", label: "10-Day Streak", icon: "⚡" },
     { id: "six_in_day", label: "6 in One Day", icon: "☰" },
     { id: "level_5", label: "Level 5", icon: "★" },
+    { id: "level_10", label: "Level 10", icon: "✦" },
     { id: "before_7am", label: "Before 7am", icon: "☀" },
     { id: "fifty_sessions", label: "50 Sessions", icon: "◈" },
   ];
@@ -70,7 +93,7 @@
   }
 
   function xpForLevel(level) {
-    return 100 + (level - 1) * 40;
+    return Math.min(500, 100 + (level - 1) * 40);
   }
 
   /** Applies `amount` XP to {xp, level}, rolling overflow into further levels. Pure — returns a new object. */
@@ -130,6 +153,20 @@
     return ACCENT_REWARDS.find((item) => item.level > level) || null;
   }
 
+  /** Each level reached after Level 10 awards one spendable Focus Token. */
+  function tokensEarnedBetween(previousLevel, nextLevel) {
+    const from = Math.max(10, Math.round(Number(previousLevel) || 1));
+    const to = Math.max(from, Math.round(Number(nextLevel) || from));
+    return Math.max(0, to - from);
+  }
+
+  function nextProgressReward(level) {
+    const accent = nextAccentReward(level);
+    if (accent) return { level: accent.level, label: `${accent.label} finish`, kind: "accent" };
+    if (level < 10) return { level: 10, label: "Chronograph dial", kind: "dialFace" };
+    return { level: level + 1, label: "1 Focus Token", kind: "token" };
+  }
+
   /**
    * Returns a new badges object (existing badges preserved) with any newly
    * met conditions set to true. `ctx.startHour` is optional (0-23, local time).
@@ -141,6 +178,7 @@
     if (ctx.longestStreak >= 10) b.streak_10 = true;
     if (ctx.todayCount >= 6) b.six_in_day = true;
     if (ctx.level >= 5) b.level_5 = true;
+    if (ctx.level >= 10) b.level_10 = true;
     if (typeof ctx.startHour === "number" && ctx.startHour < 7) b.before_7am = true;
     if (ctx.totalSessions >= 50) b.fifty_sessions = true;
     return b;
@@ -192,6 +230,8 @@
       alarmSound: ALARM_SOUNDS.indexOf(s.alarmSound) >= 0 ? s.alarmSound : DEFAULT_SETTINGS.alarmSound,
       alarmVolume: clampVolume(s.alarmVolume),
       accent: ACCENT_REWARDS.some((item) => item.id === s.accent) ? s.accent : DEFAULT_SETTINGS.accent,
+      dialFace: DIAL_FACES.includes(s.dialFace) ? s.dialFace : DEFAULT_SETTINGS.dialFace,
+      backdrop: BACKDROPS.includes(s.backdrop) ? s.backdrop : DEFAULT_SETTINGS.backdrop,
       focusGuard: !!s.focusGuard,
       blockedApps: typeof s.blockedApps === "string"
         ? s.blockedApps.trim().slice(0, 240)
@@ -399,6 +439,8 @@
     MODE_SETTING_KEYS,
     ALARM_SOUNDS,
     ACCENT_REWARDS,
+    DIAL_FACE_REWARDS,
+    WORKSHOP_REWARDS,
     DEFAULT_SETTINGS,
     BADGE_DEFS,
     MAX_LOGGED_SESSIONS,
@@ -414,6 +456,8 @@
     nextModeAfterWork,
     isAccentUnlocked,
     nextAccentReward,
+    tokensEarnedBetween,
+    nextProgressReward,
     evaluateBadges,
     formatTime,
     capSessions,

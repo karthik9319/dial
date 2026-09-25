@@ -8,6 +8,8 @@
     DEFAULT_SETTINGS,
     BADGE_DEFS,
     ACCENT_REWARDS,
+    DIAL_FACE_REWARDS,
+    WORKSHOP_REWARDS,
     todayStr,
     xpForLevel,
     applyXp,
@@ -15,7 +17,8 @@
     nextStreak,
     nextModeAfterWork,
     isAccentUnlocked,
-    nextAccentReward,
+    tokensEarnedBetween,
+    nextProgressReward,
     evaluateBadges,
     formatTime,
     capSessions,
@@ -63,6 +66,9 @@
       todayCount: 0,
       totalSessions: 0,
       focusSessions: 0,
+      focusTokens: 0,
+      ownedRewards: [],
+      rewardTrackVersion: 1,
       badges: {},
       sessions: [],
       todos: [],
@@ -103,6 +109,22 @@
     state.settings = normalizeSettings(state.settings);
     state.xp = Math.max(0, Math.round(Number(state.xp) || 0));
     state.level = Math.max(1, Math.round(Number(state.level) || 1));
+    const validRewardIds = new Set(WORKSHOP_REWARDS.map((reward) => reward.id));
+    state.ownedRewards = Array.from(new Set(Array.isArray(state.ownedRewards) ? state.ownedRewards : []))
+      .filter((id) => validRewardIds.has(id));
+    state.focusTokens = stored && stored.rewardTrackVersion === 1
+      ? Math.max(0, Math.round(Number(state.focusTokens) || 0))
+      : Math.max(0, state.level - 10);
+    state.rewardTrackVersion = 1;
+    if (state.level >= 5) state.badges.level_5 = true;
+    if (state.level >= 10) state.badges.level_10 = true;
+    const ownsValue = (kind, value) => WORKSHOP_REWARDS.some(
+      (reward) => reward.kind === kind && reward.value === value && state.ownedRewards.includes(reward.id)
+    );
+    if (state.settings.dialFace === "chronograph" && state.level < 10) state.settings.dialFace = "classic";
+    if (state.settings.dialFace === "precision" && !ownsValue("dialFace", "precision")) state.settings.dialFace = "classic";
+    if (state.settings.backdrop !== "standard" && !ownsValue("backdrop", state.settings.backdrop)) state.settings.backdrop = "standard";
+    if (state.settings.alarmSound === "gong" && !ownsValue("alarmSound", "gong")) state.settings.alarmSound = "chime";
     state.currentStreak = Math.max(0, Math.round(Number(state.currentStreak) || 0));
     state.longestStreak = Math.max(0, Math.round(Number(state.longestStreak) || 0));
     state.todayCount = Math.max(0, Math.round(Number(state.todayCount) || 0));
@@ -281,6 +303,8 @@
     setGoal: document.getElementById("setGoal"),
     setAlarm: document.getElementById("setAlarm"),
     setAccent: document.getElementById("setAccent"),
+    setDialFace: document.getElementById("setDialFace"),
+    setBackdrop: document.getElementById("setBackdrop"),
     setVolume: document.getElementById("setVolume"),
     setAutoStart: document.getElementById("setAutoStart"),
     setNotify: document.getElementById("setNotify"),
@@ -288,6 +312,9 @@
     setBlockedApps: document.getElementById("setBlockedApps"),
     focusGuardRow: document.getElementById("focusGuardRow"),
     focusGuardHelp: document.getElementById("focusGuardHelp"),
+    workshopBalance: document.getElementById("workshopBalance"),
+    workshopHelp: document.getElementById("workshopHelp"),
+    workshopList: document.getElementById("workshopList"),
     exportBackup: document.getElementById("exportBackup"),
     exportCsv: document.getElementById("exportCsv"),
     importBackup: document.getElementById("importBackup"),
@@ -342,6 +369,28 @@
     document.documentElement.setAttribute("data-accent", accent);
   }
 
+  function ownsReward(id) {
+    return state.ownedRewards.includes(id);
+  }
+
+  function ownsCosmetic(kind, value) {
+    const reward = WORKSHOP_REWARDS.find((item) => item.kind === kind && item.value === value);
+    return !!reward && ownsReward(reward.id);
+  }
+
+  function applyCosmetics() {
+    applyAccent();
+    let dialFace = state.settings.dialFace;
+    if (dialFace === "chronograph" && state.level < 10) dialFace = "classic";
+    if (dialFace === "precision" && !ownsCosmetic("dialFace", "precision")) dialFace = "classic";
+    let backdrop = state.settings.backdrop;
+    if (backdrop !== "standard" && !ownsCosmetic("backdrop", backdrop)) backdrop = "standard";
+    state.settings.dialFace = dialFace;
+    state.settings.backdrop = backdrop;
+    document.documentElement.setAttribute("data-dial-face", dialFace);
+    document.documentElement.setAttribute("data-backdrop", backdrop);
+  }
+
   function systemPrefersDark() {
     return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   }
@@ -354,7 +403,7 @@
   });
 
   applyTheme();
-  applyAccent();
+  applyCosmetics();
 
   /* ---------------- Announcer (screen readers) ---------------- */
   function announce(message) {
@@ -382,6 +431,11 @@
       { freq: 660, type: "triangle", at: 0, hold: 0.1, peak: 0.24 },
       { freq: 660, type: "triangle", at: 0.16, hold: 0.1, peak: 0.24 },
       { freq: 660, type: "triangle", at: 0.32, hold: 0.14, peak: 0.24 },
+    ],
+    gong: [
+      { freq: 196, type: "sine", at: 0, hold: 1.4, peak: 0.24 },
+      { freq: 294, type: "sine", at: 0.02, hold: 1.1, peak: 0.09 },
+      { freq: 392, type: "sine", at: 0.04, hold: 0.8, peak: 0.04 },
     ],
   };
 
@@ -937,10 +991,69 @@
   }
 
   /* ---------------- Settings ---------------- */
+  function purchaseWorkshopReward(id) {
+    const reward = WORKSHOP_REWARDS.find((item) => item.id === id);
+    if (!reward || state.level < 10 || ownsReward(id) || state.focusTokens < reward.cost) return;
+    state.focusTokens -= reward.cost;
+    state.ownedRewards.push(id);
+    state.settings[reward.kind] = reward.value;
+    saveState(state);
+    applyCosmetics();
+    renderSettings();
+    renderStats();
+    if (reward.kind === "alarmSound") playAlarm(reward.value);
+    showStatusToast(`${reward.label} added to your collection`);
+    announce(`${reward.label} purchased for ${reward.cost} Focus Token${reward.cost === 1 ? "" : "s"}.`);
+  }
+
+  function renderWorkshop() {
+    el.workshopBalance.textContent = String(state.focusTokens);
+    el.workshopHelp.textContent = state.level < 10
+      ? "Unlocks at Level 10. Level 11 awards your first Focus Token."
+      : state.focusTokens
+        ? "Spend tokens on cosmetics. Core focus features always stay unlocked."
+        : `Level ${state.level + 1} awards your next Focus Token.`;
+    el.workshopList.innerHTML = "";
+
+    WORKSHOP_REWARDS.forEach((reward) => {
+      const owned = ownsReward(reward.id);
+      const locked = state.level < 10;
+      const row = document.createElement("div");
+      row.className = `workshop-item workshop-item--${reward.kind}` + (owned ? " is-owned" : "");
+
+      const copy = document.createElement("div");
+      copy.className = "workshop-item__copy";
+      const name = document.createElement("div");
+      name.className = "workshop-item__name";
+      name.textContent = reward.label;
+      const description = document.createElement("div");
+      description.className = "workshop-item__description";
+      description.textContent = reward.description;
+      copy.appendChild(name);
+      copy.appendChild(description);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "workshop-item__buy";
+      button.disabled = locked || owned || state.focusTokens < reward.cost;
+      button.textContent = owned ? "Owned" : locked ? "Level 10" : `${reward.cost} ◆`;
+      button.setAttribute("aria-label", owned
+        ? `${reward.label} owned`
+        : `Buy ${reward.label} for ${reward.cost} Focus Token${reward.cost === 1 ? "" : "s"}`);
+      button.addEventListener("click", () => purchaseWorkshopReward(reward.id));
+
+      row.appendChild(copy);
+      row.appendChild(button);
+      el.workshopList.appendChild(row);
+    });
+  }
+
   function renderSettings() {
     Object.keys(SETTING_INPUTS).forEach((key) => {
       SETTING_INPUTS[key].value = state.settings[key];
     });
+    const gongOption = el.setAlarm.querySelector('option[value="gong"]');
+    if (gongOption) gongOption.disabled = !ownsCosmetic("alarmSound", "gong");
     el.setAlarm.value = state.settings.alarmSound;
     el.setAccent.innerHTML = "";
     ACCENT_REWARDS.forEach((reward) => {
@@ -952,6 +1065,36 @@
       el.setAccent.appendChild(option);
     });
     el.setAccent.value = state.settings.accent;
+
+    el.setDialFace.innerHTML = "";
+    DIAL_FACE_REWARDS.forEach((reward) => {
+      const option = document.createElement("option");
+      const unlocked = state.level >= reward.level;
+      option.value = reward.id;
+      option.disabled = !unlocked;
+      option.textContent = unlocked ? reward.label : `${reward.label} · Level ${reward.level}`;
+      el.setDialFace.appendChild(option);
+    });
+    const precisionOption = document.createElement("option");
+    precisionOption.value = "precision";
+    precisionOption.disabled = !ownsCosmetic("dialFace", "precision");
+    precisionOption.textContent = precisionOption.disabled ? "Precision · Workshop" : "Precision";
+    el.setDialFace.appendChild(precisionOption);
+    el.setDialFace.value = state.settings.dialFace;
+
+    el.setBackdrop.innerHTML = "";
+    [{ value: "standard", label: "Standard" }, ...WORKSHOP_REWARDS
+      .filter((reward) => reward.kind === "backdrop")
+      .map((reward) => ({ value: reward.value, label: reward.label, reward }))]
+      .forEach((item) => {
+        const option = document.createElement("option");
+        const unlocked = !item.reward || ownsReward(item.reward.id);
+        option.value = item.value;
+        option.disabled = !unlocked;
+        option.textContent = unlocked ? item.label : `${item.label} · Workshop`;
+        el.setBackdrop.appendChild(option);
+      });
+    el.setBackdrop.value = state.settings.backdrop;
     el.setVolume.value = Math.round(state.settings.alarmVolume * 100);
     el.setVolume.disabled = state.settings.alarmSound === "none";
     el.setAutoStart.checked = state.settings.autoStart;
@@ -966,6 +1109,7 @@
     el.focusGuardHelp.textContent = guardAvailable
       ? "Hide selected macOS apps while a focus timer runs."
       : "Available in the macOS desktop app; browser pages cannot control other apps.";
+    renderWorkshop();
   }
 
   function updateSetting(key, value) {
@@ -981,7 +1125,7 @@
     }
 
     renderSettings();
-    if (key === "accent") applyAccent();
+    if (key === "accent" || key === "dialFace" || key === "backdrop") applyCosmetics();
     if (key === "focusGuard" || key === "blockedApps") updateFocusGuard();
     renderStats();
     renderStatsPanel();
@@ -1071,7 +1215,7 @@
       el.completionSheet.hidden = true;
       saveState(state);
       applyTheme();
-      applyAccent();
+      applyCosmetics();
       renderAll();
       updateFocusGuard();
       showStatusToast("Backup restored");
@@ -1116,10 +1260,12 @@
     const needed = xpForLevel(state.level);
     el.xpText.textContent = `${state.xp} / ${needed}`;
     el.xpFill.style.width = `${Math.min(100, (state.xp / needed) * 100)}%`;
-    const nextReward = nextAccentReward(state.level);
-    el.xpReward.textContent = nextReward
-      ? `Level ${nextReward.level} unlocks ${nextReward.label} finish`
-      : "All dial finishes unlocked";
+    const nextReward = nextProgressReward(state.level);
+    const tokenBalance = state.level >= 10
+      ? `${state.focusTokens} Focus Token${state.focusTokens === 1 ? "" : "s"} · `
+      : "";
+    const rewardVerb = nextReward.kind === "token" ? "awards" : "unlocks";
+    el.xpReward.textContent = `${tokenBalance}Level ${nextReward.level} ${rewardVerb} ${nextReward.label}`;
   }
 
   let rewardToastHandle = null;
@@ -1136,7 +1282,25 @@
 
   function showRewardToast(reward) {
     if (!reward) return;
-    showStatusToast(`Level ${reward.level} reached · ${reward.label} finish unlocked`);
+    showStatusToast(reward.message || `Level ${reward.level} reached · ${reward.label} unlocked`);
+  }
+
+  function levelRewardEarned(previousLevel, currentLevel, tokensEarned) {
+    if (currentLevel <= previousLevel) return null;
+    if (previousLevel < 10 && currentLevel >= 10) {
+      return { level: 10, message: "Level 10 reached · Chronograph dial and badge unlocked" };
+    }
+    const accent = [...ACCENT_REWARDS]
+      .reverse()
+      .find((reward) => reward.level > previousLevel && reward.level <= currentLevel);
+    if (accent) return { level: accent.level, message: `Level ${accent.level} reached · ${accent.label} finish unlocked` };
+    if (tokensEarned) {
+      return {
+        level: currentLevel,
+        message: `Level ${currentLevel} reached · +${tokensEarned} Focus Token${tokensEarned === 1 ? "" : "s"}`,
+      };
+    }
+    return { level: currentLevel, message: `Level ${currentLevel} reached` };
   }
 
   function renderAll() {
@@ -1241,6 +1405,7 @@
     el.taskCategoryInput.value = category;
     saveTimerSnapshot();
     start();
+    showRewardToast(review.unlockedReward);
     announce(`Continuing ${task} for ${state.customMinutes} minutes.`);
   }
 
@@ -1392,6 +1557,8 @@
       const applied = applyXp(state.xp, state.level, xpEarned);
       state.xp = applied.xp;
       state.level = applied.level;
+      const tokensEarned = tokensEarnedBetween(previousLevel, state.level);
+      state.focusTokens += tokensEarned;
 
       const todo = finishedTodoId ? state.todos.find((t) => t.id === finishedTodoId) : null;
       let taskName = todo ? todo.text : null;
@@ -1409,9 +1576,7 @@
         startHour: startedAt.getHours(),
       });
 
-      const unlockedReward = ACCENT_REWARDS.find(
-        (reward) => reward.level > previousLevel && reward.level <= state.level
-      );
+      const unlockedReward = levelRewardEarned(previousLevel, state.level, tokensEarned);
       const nextMode = nextModeAfterWork(mode, state.focusSessions);
       saveState(state);
       renderAll();
@@ -1498,6 +1663,8 @@
   });
 
   el.setAccent.addEventListener("change", () => updateSetting("accent", el.setAccent.value));
+  el.setDialFace.addEventListener("change", () => updateSetting("dialFace", el.setDialFace.value));
+  el.setBackdrop.addEventListener("change", () => updateSetting("backdrop", el.setBackdrop.value));
 
   el.setVolume.addEventListener("change", () => {
     updateSetting("alarmVolume", clampVolume(Number(el.setVolume.value) / 100));

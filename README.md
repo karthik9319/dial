@@ -34,12 +34,16 @@ the app is fully functional offline with system-font fallbacks if there's no net
   finished. Dial asks whether it is Done, needs another same-length block, needs five more minutes,
   or should return to the queue. A quick category and reflection note can be added at that point.
 - **Estimate accuracy**: tasks explicitly marked Done feed a rolling 30-day comparison of estimated
-  versus actual time, an within-20% score, and a category-level prompt for the work you most often
+  versus actual time, a within-20% accuracy score, and a category-level prompt for work you most often
   underestimate. Continued and queued blocks are excluded until the task is really finished.
 - **XP**: +20 XP per completed focus or custom session, plus a streak bonus of +2 XP per current
   streak day (capped at +20). Breaks earn no XP.
-- **Levels and rewards**: level `N` requires `100 + (N-1)*40` XP; leftover XP carries into the
-  next level. Levels 2–5 unlock Copper, Jade, Cobalt, and Amethyst dial finishes.
+- **Levels and rewards**: level `N` requires `100 + (N-1)*40` XP, capped at 500 XP per level;
+  leftover XP carries forward. Levels 2–9 unlock Copper, Jade, Cobalt, Amethyst, Graphite,
+  Rose Gold, Frost, and Ember finishes. Level 10 unlocks the Chronograph dial and its badge.
+- **Focus Tokens + Workshop**: every level reached after Level 10 awards one token. Tokens buy
+  optional backdrops, the Precision dial face, and a Soft Gong alarm in Settings. Purchases are
+  local and permanent, while all practical focus features remain available without tokens.
 - **Streaks**: consecutive calendar days with at least one completed focus session. A missed day
   resets the current streak back to 1 on your next session.
 - **Daily goal**: a target number of sessions per day (8 by default), shown on the Today counter
@@ -48,10 +52,10 @@ the app is fully functional offline with system-font fallbacks if there's no net
 - **Portable data**: Settings can download a complete JSON backup, restore one after confirmation,
   or export the session history as CSV. A restore replaces only Dial's local state; in-progress
   timers are intentionally not included.
-- **Badges**: First Sprint, 5-Day Streak, 10-Day Streak, 6 in One Day, Level 5, Before 7am, and
-  50 Sessions — unlock automatically as you hit each milestone.
-- **Settings**: mode durations, daily goal, unlocked dial finish, alarm sound (three synthesised
-  options, or silent), alarm volume, auto-start next session, notifications, data tools, and the
+- **Badges**: First Sprint, 5-Day Streak, 10-Day Streak, 6 in One Day, Levels 5 and 10, Before
+  7am, and 50 Sessions — unlock automatically as you hit each milestone.
+- **Settings**: mode durations, daily goal, unlocked cosmetics, alarm sounds (including the
+  Workshop reward or silent mode), volume, auto-start, notifications, data tools, and the
   desktop-only Focus Guard.
 
 ## Running the test suite

@@ -24,6 +24,14 @@
 
   const ALARM_SOUNDS = ["chime", "bell", "pulse", "none"];
 
+  const ACCENT_REWARDS = [
+    { id: "brass", label: "Brass", level: 1 },
+    { id: "copper", label: "Copper", level: 2 },
+    { id: "jade", label: "Jade", level: 3 },
+    { id: "cobalt", label: "Cobalt", level: 4 },
+    { id: "amethyst", label: "Amethyst", level: 5 },
+  ];
+
   const DEFAULT_SETTINGS = {
     focusMinutes: 25,
     shortMinutes: 5,
@@ -33,6 +41,7 @@
     notify: true,
     alarmSound: "chime",
     alarmVolume: 0.6,
+    accent: "brass",
   };
 
   const BADGE_DEFS = [
@@ -45,7 +54,9 @@
     { id: "fifty_sessions", label: "50 Sessions", icon: "◈" },
   ];
 
-  const MAX_LOGGED_SESSIONS = 200;
+  /* 2,000 compact entries fit comfortably in localStorage and keep a truthful
+     30-day view even for someone completing the maximum 24-session goal daily. */
+  const MAX_LOGGED_SESSIONS = 2000;
   const MAX_TODOS = 100;
 
   function todayStr(d) {
@@ -101,6 +112,20 @@
   /** Every 4th completed focus session (lifetime) is followed by a long break. */
   function nextBreakMode(totalFocusSessionsCompleted) {
     return totalFocusSessionsCompleted % 4 === 0 ? "long" : "short";
+  }
+
+  /** Custom errands always receive a short break; only focus sessions advance the long-break cadence. */
+  function nextModeAfterWork(completedMode, focusSessionsCompleted) {
+    return completedMode === "focus" ? nextBreakMode(focusSessionsCompleted) : "short";
+  }
+
+  function isAccentUnlocked(accent, level) {
+    const reward = ACCENT_REWARDS.find((item) => item.id === accent);
+    return !!reward && level >= reward.level;
+  }
+
+  function nextAccentReward(level) {
+    return ACCENT_REWARDS.find((item) => item.level > level) || null;
   }
 
   /**
@@ -164,6 +189,7 @@
       notify: !!s.notify,
       alarmSound: ALARM_SOUNDS.indexOf(s.alarmSound) >= 0 ? s.alarmSound : DEFAULT_SETTINGS.alarmSound,
       alarmVolume: clampVolume(s.alarmVolume),
+      accent: ACCENT_REWARDS.some((item) => item.id === s.accent) ? s.accent : DEFAULT_SETTINGS.accent,
     };
   }
 
@@ -290,6 +316,7 @@
     MODE_LABELS,
     MODE_SETTING_KEYS,
     ALARM_SOUNDS,
+    ACCENT_REWARDS,
     DEFAULT_SETTINGS,
     BADGE_DEFS,
     MAX_LOGGED_SESSIONS,
@@ -302,6 +329,9 @@
     daysBetween,
     nextStreak,
     nextBreakMode,
+    nextModeAfterWork,
+    isAccentUnlocked,
+    nextAccentReward,
     evaluateBadges,
     formatTime,
     capSessions,

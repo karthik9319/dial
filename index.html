@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dial — Focus Console</title>
+<title>Dial — Focus better. Estimate smarter.</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2242%22 fill=%22%2317181c%22 stroke=%22%23c9a227%22 stroke-width=%226%22/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 
@@ -46,8 +46,12 @@
       </div>
     </div>
 
-    <div class="task-input-wrap">
-      <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="What are you focusing on?" autocomplete="off" list="taskSuggestions">
+    <div class="active-focus">
+      <div class="active-focus__head">
+        <label for="taskInput" class="active-focus__label">Current focus</label>
+        <span class="active-focus__hint">or start one from Next up</span>
+      </div>
+      <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="Name this focus session…" autocomplete="off" list="taskSuggestions">
     </div>
 
     <datalist id="taskSuggestions"></datalist>
@@ -91,6 +95,7 @@
       <div class="xp-bar">
         <div class="xp-bar__fill" id="xpFill"></div>
       </div>
+      <div class="xp-panel__reward" id="xpReward">Level 2 unlocks Copper finish</div>
     </section>
 
   </div>
@@ -105,6 +110,22 @@
 
     <div class="pane" id="paneTasks" role="tabpanel" aria-labelledby="tabTasks">
       <section class="panel">
+        <div class="pane-head">
+          <div>
+            <h2 class="panel__title">Next up</h2>
+            <p class="pane-head__copy">Plan a task, estimate it, then press play.</p>
+          </div>
+          <span class="queue-count" id="queueCount">0 queued</span>
+        </div>
+        <div class="onboarding" id="onboarding">
+          <p class="onboarding__eyebrow">Your first focused block</p>
+          <ol class="onboarding__steps">
+            <li><span>1</span> Add a task and estimate its time.</li>
+            <li><span>2</span> Press play to move it into Current focus.</li>
+            <li><span>3</span> Compare your estimate with time spent.</li>
+          </ol>
+          <button class="onboarding__cta" id="onboardingCta" type="button">Add your first task</button>
+        </div>
         <form class="todo-add" id="todoForm">
           <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
           <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
@@ -210,6 +231,14 @@
         </select>
       </div>
 
+      <div class="setting-row setting-row--stacked">
+        <div>
+          <label for="setAccent">Dial finish</label>
+          <p class="setting-help">New finishes unlock as you level up.</p>
+        </div>
+        <select id="setAccent" class="setting-select"></select>
+      </div>
+
       <div class="setting-row">
         <label for="setVolume">Volume</label>
         <input type="range" id="setVolume" class="setting-range" min="0" max="100" step="5">
@@ -228,9 +257,14 @@
     </div>
   </div>
 
+  <div class="reward-toast" id="rewardToast" role="status" hidden>
+    <span class="reward-toast__icon">◆</span>
+    <span id="rewardToastText"></span>
+  </div>
+
 </main>
 
-<script src="logic.js"></script>
-<script src="app.js"></script>
+<script src="logic.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

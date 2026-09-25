@@ -8,6 +8,9 @@ const {
   daysBetween,
   nextStreak,
   nextBreakMode,
+  nextModeAfterWork,
+  isAccentUnlocked,
+  nextAccentReward,
   evaluateBadges,
   formatTime,
   capSessions,
@@ -94,9 +97,15 @@ test("nextBreakMode is short except every 4th completed focus session", () => {
   assert.equal(nextBreakMode(9), "short");
 });
 
+test("custom sessions never advance or repeat the long-break cadence", () => {
+  assert.equal(nextModeAfterWork("custom", 3), "short");
+  assert.equal(nextModeAfterWork("custom", 4), "short");
+  assert.equal(nextModeAfterWork("focus", 4), "long");
+});
+
 /* ---------------- Badges ---------------- */
 
-test("first_sprint unlocks on the first completed focus session", () => {
+test("first_sprint unlocks on the first completed work session", () => {
   const badges = evaluateBadges({}, { totalSessions: 1, longestStreak: 1, todayCount: 1, level: 1 });
   assert.equal(badges.first_sprint, true);
 });
@@ -136,7 +145,7 @@ test("before_7am only unlocks when startHour is before 7", () => {
   assert.equal(early.before_7am, true);
 });
 
-test("fifty_sessions unlocks at 50 lifetime completed focus sessions", () => {
+test("fifty_sessions unlocks at 50 lifetime completed work sessions", () => {
   const under = evaluateBadges({}, { totalSessions: 49, longestStreak: 1, todayCount: 1, level: 1 });
   assert.equal(under.fifty_sessions, undefined);
   const at = evaluateBadges({}, { totalSessions: 50, longestStreak: 1, todayCount: 1, level: 1 });
@@ -169,6 +178,10 @@ test("capSessions trims the log to the retention cap, keeping the newest entries
 test("capSessions leaves a short log untouched", () => {
   const sessions = [{ task: "a" }, { task: "b" }];
   assert.equal(capSessions(sessions).length, 2);
+});
+
+test("session retention covers 30 days at the maximum daily goal", () => {
+  assert.ok(MAX_LOGGED_SESSIONS >= 24 * 30);
 });
 
 /* ---------- Custom duration / to-do list ---------- */
@@ -263,6 +276,7 @@ test("normalizeSettings keeps valid stored values", () => {
     notify: false,
     alarmSound: "bell",
     alarmVolume: 0.25,
+    accent: "jade",
   });
   assert.equal(s.focusMinutes, 50);
   assert.equal(s.shortMinutes, 10);
@@ -272,6 +286,7 @@ test("normalizeSettings keeps valid stored values", () => {
   assert.equal(s.notify, false);
   assert.equal(s.alarmSound, "bell");
   assert.equal(s.alarmVolume, 0.25);
+  assert.equal(s.accent, "jade");
 });
 
 test("normalizeSettings clamps durations into their allowed ranges", () => {
@@ -285,6 +300,19 @@ test("normalizeSettings clamps durations into their allowed ranges", () => {
 test("normalizeSettings rejects an unknown alarm sound", () => {
   assert.equal(normalizeSettings({ alarmSound: "airhorn" }).alarmSound, DEFAULT_SETTINGS.alarmSound);
   assert.equal(normalizeSettings({ alarmSound: "none" }).alarmSound, "none");
+});
+
+test("normalizeSettings rejects an unknown dial finish", () => {
+  assert.equal(normalizeSettings({ accent: "neon" }).accent, DEFAULT_SETTINGS.accent);
+  assert.equal(normalizeSettings({ accent: "cobalt" }).accent, "cobalt");
+});
+
+test("dial finishes unlock by level and expose the next reward", () => {
+  assert.equal(isAccentUnlocked("brass", 1), true);
+  assert.equal(isAccentUnlocked("copper", 1), false);
+  assert.equal(isAccentUnlocked("copper", 2), true);
+  assert.deepEqual(nextAccentReward(3), { id: "cobalt", label: "Cobalt", level: 4 });
+  assert.equal(nextAccentReward(5), null);
 });
 
 test("normalizeSettings coerces truthy/falsy toggles to real booleans", () => {

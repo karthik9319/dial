@@ -7,12 +7,15 @@
     MODE_SETTING_KEYS,
     DEFAULT_SETTINGS,
     BADGE_DEFS,
+    ACCENT_REWARDS,
     todayStr,
     xpForLevel,
     applyXp,
     focusSessionXp,
     nextStreak,
-    nextBreakMode,
+    nextModeAfterWork,
+    isAccentUnlocked,
+    nextAccentReward,
     evaluateBadges,
     formatTime,
     capSessions,
@@ -58,6 +61,7 @@
       today: todayStr(),
       todayCount: 0,
       totalSessions: 0,
+      focusSessions: 0,
       badges: {},
       sessions: [],
       todos: [],
@@ -79,6 +83,13 @@
     const state = Object.assign(defaultState(), stored || {});
     state.badges = Object.assign({}, stored && stored.badges);
     state.sessions = capSessions(Array.isArray(state.sessions) ? state.sessions : []);
+    if (!stored || !Number.isFinite(Number(stored.focusSessions))) {
+      /* Older versions tracked all work together. Rebuild the focus-only
+         cadence so custom errands cannot trigger long breaks. */
+      state.focusSessions = state.sessions.filter((session) => session.mode === "focus").length;
+    } else {
+      state.focusSessions = Math.max(0, Math.round(Number(stored.focusSessions)));
+    }
     /* Finished tasks used to linger in the list with a `done` flag; they now
        leave it outright, so drop any left over from that older format. */
     const todos = (Array.isArray(state.todos) ? state.todos : []).filter((t) => t && !t.done);
@@ -204,6 +215,9 @@
     todoInput: document.getElementById("todoInput"),
     todoMinutesInput: document.getElementById("todoMinutesInput"),
     todoList: document.getElementById("todoList"),
+    onboarding: document.getElementById("onboarding"),
+    onboardingCta: document.getElementById("onboardingCta"),
+    queueCount: document.getElementById("queueCount"),
     taskSuggestions: document.getElementById("taskSuggestions"),
     dialProgress: document.getElementById("dialProgress"),
     timeDisplay: document.getElementById("timeDisplay"),
@@ -215,6 +229,7 @@
     statLevel: document.getElementById("statLevel"),
     xpText: document.getElementById("xpText"),
     xpFill: document.getElementById("xpFill"),
+    xpReward: document.getElementById("xpReward"),
     badgesRow: document.getElementById("badgesRow"),
     sessionLog: document.getElementById("sessionLog"),
     announcer: document.getElementById("announcer"),
@@ -230,6 +245,7 @@
     setLong: document.getElementById("setLong"),
     setGoal: document.getElementById("setGoal"),
     setAlarm: document.getElementById("setAlarm"),
+    setAccent: document.getElementById("setAccent"),
     setVolume: document.getElementById("setVolume"),
     setAutoStart: document.getElementById("setAutoStart"),
     setNotify: document.getElementById("setNotify"),
@@ -239,6 +255,8 @@
     settingsSheet: document.getElementById("settingsSheet"),
     openSettings: document.getElementById("openSettings"),
     closeSettings: document.getElementById("closeSettings"),
+    rewardToast: document.getElementById("rewardToast"),
+    rewardToastText: document.getElementById("rewardToastText"),
   };
 
   /** Maps a numeric setting key to its input element. */
@@ -265,6 +283,12 @@
     }
   }
 
+  function applyAccent() {
+    const accent = isAccentUnlocked(state.settings.accent, state.level) ? state.settings.accent : "brass";
+    if (accent !== state.settings.accent) state.settings.accent = accent;
+    document.documentElement.setAttribute("data-accent", accent);
+  }
+
   function systemPrefersDark() {
     return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   }
@@ -277,6 +301,7 @@
   });
 
   applyTheme();
+  applyAccent();
 
   /* ---------------- Announcer (screen readers) ---------------- */
   function announce(message) {
@@ -486,11 +511,15 @@
 
   function renderTodos() {
     el.todoList.innerHTML = "";
+    const isFirstRun = !state.todos.length && !state.sessions.length;
+    el.onboarding.hidden = !isFirstRun;
+    el.queueCount.textContent = `${state.todos.length} queued`;
 
     if (!state.todos.length) {
+      if (isFirstRun) return;
       const empty = document.createElement("p");
       empty.className = "todo-empty";
-      empty.textContent = "No tasks yet. Add one above.";
+      empty.textContent = "Your queue is clear. Add what you want to focus on next.";
       el.todoList.appendChild(empty);
       return;
     }
@@ -757,6 +786,16 @@
       SETTING_INPUTS[key].value = state.settings[key];
     });
     el.setAlarm.value = state.settings.alarmSound;
+    el.setAccent.innerHTML = "";
+    ACCENT_REWARDS.forEach((reward) => {
+      const option = document.createElement("option");
+      const unlocked = isAccentUnlocked(reward.id, state.level);
+      option.value = reward.id;
+      option.disabled = !unlocked;
+      option.textContent = unlocked ? reward.label : `${reward.label} · Level ${reward.level}`;
+      el.setAccent.appendChild(option);
+    });
+    el.setAccent.value = state.settings.accent;
     el.setVolume.value = Math.round(state.settings.alarmVolume * 100);
     el.setVolume.disabled = state.settings.alarmSound === "none";
     el.setAutoStart.checked = state.settings.autoStart;
@@ -776,6 +815,7 @@
     }
 
     renderSettings();
+    if (key === "accent") applyAccent();
     renderStats();
     renderStatsPanel();
   }
@@ -818,6 +858,22 @@
     const needed = xpForLevel(state.level);
     el.xpText.textContent = `${state.xp} / ${needed}`;
     el.xpFill.style.width = `${Math.min(100, (state.xp / needed) * 100)}%`;
+    const nextReward = nextAccentReward(state.level);
+    el.xpReward.textContent = nextReward
+      ? `Level ${nextReward.level} unlocks ${nextReward.label} finish`
+      : "All dial finishes unlocked";
+  }
+
+  let rewardToastHandle = null;
+  function showRewardToast(reward) {
+    if (!reward) return;
+    el.rewardToastText.textContent = `Level ${reward.level} reached · ${reward.label} finish unlocked`;
+    el.rewardToast.hidden = false;
+    if (rewardToastHandle) clearTimeout(rewardToastHandle);
+    rewardToastHandle = window.setTimeout(() => {
+      el.rewardToast.hidden = true;
+      rewardToastHandle = null;
+    }, 4500);
   }
 
   function renderAll() {
@@ -944,11 +1000,13 @@
         state.currentStreak = nextStreak(state.lastSessionDate, state.currentStreak, todayStr());
         state.lastSessionDate = todayStr();
         state.longestStreak = Math.max(state.longestStreak, state.currentStreak);
+        state.focusSessions += 1;
       }
       state.todayCount += 1;
       state.totalSessions += 1;
 
       const xpEarned = focusSessionXp(state.currentStreak);
+      const previousLevel = state.level;
       const applied = applyXp(state.xp, state.level, xpEarned);
       state.xp = applied.xp;
       state.level = applied.level;
@@ -974,7 +1032,10 @@
 
       el.taskInput.value = "";
 
-      const nextMode = nextBreakMode(state.totalSessions);
+      const unlockedReward = ACCENT_REWARDS.find(
+        (reward) => reward.level > previousLevel && reward.level <= state.level
+      );
+      const nextMode = nextModeAfterWork(mode, state.focusSessions);
       const label = finishedTodoId ? "Task" : "Focus session";
       saveState(state);
       renderAll();
@@ -984,6 +1045,7 @@
         `${taskName || "Focus"} — ${MODE_LABELS[nextMode].toLowerCase()} up next.`
       );
       setMode(nextMode, { force: true });
+      showRewardToast(unlockedReward);
       autoStartNext();
     } else {
       const finishedLabel = MODE_LABELS[mode];
@@ -1023,6 +1085,8 @@
     el.todoInput.focus();
   });
 
+  el.onboardingCta.addEventListener("click", () => el.todoInput.focus());
+
   el.tabs.forEach((tab) => {
     tab.addEventListener("click", () => selectTab(tab.dataset.pane));
   });
@@ -1047,6 +1111,8 @@
     updateSetting("alarmSound", el.setAlarm.value);
     playAlarm();
   });
+
+  el.setAccent.addEventListener("change", () => updateSetting("accent", el.setAccent.value));
 
   el.setVolume.addEventListener("change", () => {
     updateSetting("alarmVolume", clampVolume(Number(el.setVolume.value) / 100));

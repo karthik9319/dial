@@ -252,6 +252,7 @@
 
   /* ---------------- DOM refs ---------------- */
   const el = {
+    screenContext: document.getElementById("screenContext"),
     themeToggle: document.getElementById("themeToggle"),
     modeButtons: Array.from(document.querySelectorAll(".mode-btn")),
     taskInput: document.getElementById("taskInput"),
@@ -297,6 +298,15 @@
     estimateOnTarget: document.getElementById("estimateOnTarget"),
     estimateTasks: document.getElementById("estimateTasks"),
     estimateInsight: document.getElementById("estimateInsight"),
+    categoryBreakdown: document.getElementById("categoryBreakdown"),
+    collectionLevel: document.getElementById("collectionLevel"),
+    collectionXpText: document.getElementById("collectionXpText"),
+    collectionXpFill: document.getElementById("collectionXpFill"),
+    collectionNextReward: document.getElementById("collectionNextReward"),
+    openCollection: document.getElementById("openCollection"),
+    focusNextTask: document.getElementById("focusNextTask"),
+    focusNextMeta: document.getElementById("focusNextMeta"),
+    focusNextStart: document.getElementById("focusNextStart"),
     setFocus: document.getElementById("setFocus"),
     setShort: document.getElementById("setShort"),
     setLong: document.getElementById("setLong"),
@@ -630,6 +640,7 @@
     el.taskInput.value = todo.text;
     el.taskCategoryInput.value = todo.category || "";
     saveTimerSnapshot();
+    selectTab("paneFocus");
     start();
   }
 
@@ -656,6 +667,7 @@
     const isFirstRun = !state.todos.length && !state.sessions.length;
     el.onboarding.hidden = !isFirstRun;
     el.queueCount.textContent = `${state.todos.length} queued`;
+    renderFocusNext();
 
     if (!state.todos.length) {
       if (isFirstRun) return;
@@ -732,6 +744,23 @@
       row.appendChild(del);
       el.todoList.appendChild(row);
     });
+  }
+
+  function renderFocusNext() {
+    const todo = state.todos.find((item) => item.id !== activeTodoId);
+    if (!todo) {
+      el.focusNextTask.textContent = "Your queue is clear";
+      el.focusNextMeta.textContent = "Plan your next focus block";
+      el.focusNextStart.textContent = "+";
+      el.focusNextStart.setAttribute("aria-label", "Open Plan to add a task");
+      el.focusNextStart.disabled = false;
+      return;
+    }
+    el.focusNextTask.textContent = todo.text;
+    el.focusNextMeta.textContent = `${todo.category ? `${todo.category} · ` : ""}${todo.minutes} min estimate`;
+    el.focusNextStart.textContent = "▶";
+    el.focusNextStart.setAttribute("aria-label", `Start ${todo.text}`);
+    el.focusNextStart.disabled = running;
   }
 
   /** Builds the inline edit row for a to-do: text + minutes inputs with save/cancel. */
@@ -911,6 +940,14 @@
     el.panes.forEach((pane) => {
       pane.hidden = pane.id !== paneId;
     });
+    const contexts = {
+      paneFocus: "Focus with intention",
+      panePlan: "Shape the next block",
+      paneInsights: "Learn from your patterns",
+      paneCollection: "Rewards earned through focus",
+    };
+    el.screenContext.textContent = contexts[paneId] || contexts.paneFocus;
+    document.querySelector(".app-panes").scrollTop = 0;
   }
 
   function setSettingsOpen(open) {
@@ -988,6 +1025,56 @@
         el.estimateInsight.textContent = "Your estimates are tracking closely with actual time. Keep marking tasks done to improve the signal.";
       }
     }
+    renderCategoryBreakdown();
+  }
+
+  function renderCategoryBreakdown() {
+    el.categoryBreakdown.innerHTML = "";
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 29);
+    cutoff.setHours(0, 0, 0, 0);
+    const groups = new Map();
+    state.sessions.forEach((session) => {
+      const timestamp = new Date(session.time);
+      if (!Number.isFinite(timestamp.getTime()) || timestamp < cutoff) return;
+      const category = cleanCategory(session.category) || "Uncategorized";
+      const current = groups.get(category) || { minutes: 0, sessions: 0 };
+      current.minutes += Math.max(0, Number(session.minutes) || 0);
+      current.sessions += 1;
+      groups.set(category, current);
+    });
+    const ranked = Array.from(groups, ([category, values]) => ({ category, ...values }))
+      .sort((a, b) => b.minutes - a.minutes || b.sessions - a.sessions)
+      .slice(0, 5);
+    if (!ranked.length) {
+      const empty = document.createElement("p");
+      empty.className = "category-breakdown__empty";
+      empty.textContent = "Add categories to focus sessions to see where your time goes.";
+      el.categoryBreakdown.appendChild(empty);
+      return;
+    }
+    const maxMinutes = Math.max(...ranked.map((group) => group.minutes), 1);
+    ranked.forEach((group) => {
+      const row = document.createElement("div");
+      row.className = "category-breakdown__row";
+      const head = document.createElement("div");
+      head.className = "category-breakdown__head";
+      const name = document.createElement("span");
+      name.textContent = group.category;
+      const value = document.createElement("span");
+      value.textContent = `${formatMinutes(group.minutes)} · ${group.sessions}`;
+      head.appendChild(name);
+      head.appendChild(value);
+      const track = document.createElement("div");
+      track.className = "category-breakdown__track";
+      const fill = document.createElement("div");
+      fill.className = "category-breakdown__fill";
+      fill.style.width = `${Math.max(5, (group.minutes / maxMinutes) * 100)}%`;
+      track.appendChild(fill);
+      row.appendChild(head);
+      row.appendChild(track);
+      el.categoryBreakdown.appendChild(row);
+    });
   }
 
   /* ---------------- Settings ---------------- */
@@ -1266,6 +1353,10 @@
       : "";
     const rewardVerb = nextReward.kind === "token" ? "awards" : "unlocks";
     el.xpReward.textContent = `${tokenBalance}Level ${nextReward.level} ${rewardVerb} ${nextReward.label}`;
+    el.collectionLevel.textContent = String(state.level);
+    el.collectionXpText.textContent = `${state.xp} / ${needed} XP`;
+    el.collectionXpFill.style.width = `${Math.min(100, (state.xp / needed) * 100)}%`;
+    el.collectionNextReward.textContent = `Next: Level ${nextReward.level} ${rewardVerb} ${nextReward.label}`;
   }
 
   let rewardToastHandle = null;
@@ -1497,6 +1588,7 @@
     clearTick();
     renderTimer();
     renderModeButtons();
+    renderTodos();
     saveTimerSnapshot();
     updateFocusGuard();
   }
@@ -1639,6 +1731,16 @@
 
   el.tabs.forEach((tab) => {
     tab.addEventListener("click", () => selectTab(tab.dataset.pane));
+  });
+
+  el.openCollection.addEventListener("click", () => selectTab("paneCollection"));
+  el.focusNextStart.addEventListener("click", () => {
+    const next = state.todos.find((item) => item.id !== activeTodoId);
+    if (next) startTodo(next.id);
+    else {
+      selectTab("panePlan");
+      el.todoInput.focus();
+    }
   });
 
   el.openSettings.addEventListener("click", () => setSettingsOpen(true));

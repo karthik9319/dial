@@ -8,124 +8,107 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
 <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
 
 <main class="console">
-
-  <div class="console__fixed">
-
-    <div class="topbar">
+  <header class="topbar app-header">
+    <div>
       <h1 class="topbar__brand">DIAL</h1>
-      <div class="topbar__actions">
-        <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
-          <span aria-hidden="true">◐</span>
-        </button>
-        <button id="openSettings" class="icon-btn" type="button" aria-label="Open settings" title="Settings">
-          <span aria-hidden="true">⚙</span>
-        </button>
-      </div>
+      <p class="topbar__context" id="screenContext">Focus with intention</p>
     </div>
-
-    <section class="modes" role="tablist" aria-label="Timer mode">
-      <button class="mode-btn" data-mode="focus" role="tab" aria-selected="true">Focus</button>
-      <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short</button>
-      <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long</button>
-      <button class="mode-btn" data-mode="custom" role="tab" aria-selected="false">Custom</button>
-    </section>
-
-    <div class="custom-duration" id="customDuration" hidden>
-      <label for="customMinutesInput" class="custom-duration__label">Minutes</label>
-      <div class="stepper">
-        <button type="button" class="stepper__btn" id="customMinusBtn" aria-label="Decrease minutes">−</button>
-        <input type="number" id="customMinutesInput" class="stepper__input" min="1" max="120" value="10" inputmode="numeric">
-        <button type="button" class="stepper__btn" id="customPlusBtn" aria-label="Increase minutes">+</button>
-      </div>
+    <div class="topbar__actions">
+      <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+        <span aria-hidden="true">◐</span>
+      </button>
+      <button id="openSettings" class="icon-btn" type="button" aria-label="Open settings" title="Settings">
+        <span aria-hidden="true">⚙</span>
+      </button>
     </div>
+  </header>
 
-    <div class="active-focus">
-      <div class="active-focus__head">
-        <label for="taskInput" class="active-focus__label">Current focus</label>
-        <span class="active-focus__hint">or start one from Next up</span>
-      </div>
-      <div class="active-focus__fields">
-        <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="Name this focus session…" autocomplete="off" list="taskSuggestions">
-        <input id="taskCategoryInput" class="category-input" type="text" maxlength="30" placeholder="Category (optional)" autocomplete="off" list="categorySuggestions" aria-label="Current focus category">
-      </div>
-    </div>
+  <datalist id="taskSuggestions"></datalist>
+  <datalist id="categorySuggestions"></datalist>
 
-    <datalist id="taskSuggestions"></datalist>
-    <datalist id="categorySuggestions"></datalist>
+  <div class="panes app-panes">
+    <div class="pane focus-pane" id="paneFocus" role="tabpanel" aria-labelledby="tabFocus">
+      <section class="modes" role="tablist" aria-label="Timer mode">
+        <button class="mode-btn" data-mode="focus" role="tab" aria-selected="true">Focus</button>
+        <button class="mode-btn" data-mode="short" role="tab" aria-selected="false">Short</button>
+        <button class="mode-btn" data-mode="long" role="tab" aria-selected="false">Long</button>
+        <button class="mode-btn" data-mode="custom" role="tab" aria-selected="false">Custom</button>
+      </section>
 
-    <section class="dial-wrap">
-      <svg class="dial" viewBox="0 0 300 300" aria-hidden="true">
-        <circle class="dial__track" cx="150" cy="150" r="130" />
-        <circle class="dial__progress" id="dialProgress" cx="150" cy="150" r="130" />
-      </svg>
-      <div class="dial__center">
-        <div class="dial__time" id="timeDisplay">25:00</div>
-        <div class="dial__label" id="modeLabel">Focus</div>
-      </div>
-    </section>
-
-    <section class="controls">
-      <button id="startPauseBtn" class="btn btn--primary" type="button">Start</button>
-      <button id="resetBtn" class="btn" type="button">Reset</button>
-    </section>
-
-    <section class="stats-row">
-      <div class="stat">
-        <div class="stat__value" id="statStreak">0</div>
-        <div class="stat__label">Streak</div>
-      </div>
-      <div class="stat">
-        <div class="stat__value" id="statToday">0</div>
-        <div class="stat__label">Today</div>
-      </div>
-      <div class="stat">
-        <div class="stat__value" id="statLevel">1</div>
-        <div class="stat__label">Level</div>
-      </div>
-    </section>
-
-    <section class="xp-panel">
-      <div class="xp-panel__head">
-        <span>XP</span>
-        <span id="xpText">0 / 100</span>
-      </div>
-      <div class="xp-bar">
-        <div class="xp-bar__fill" id="xpFill"></div>
-      </div>
-      <div class="xp-panel__reward" id="xpReward">Level 2 unlocks Copper finish</div>
-    </section>
-
-  </div>
-
-  <div class="tabs" role="tablist" aria-label="Panels">
-    <button class="tab" type="button" role="tab" id="tabTasks" aria-controls="paneTasks" aria-selected="true" data-pane="paneTasks">Tasks</button>
-    <button class="tab" type="button" role="tab" id="tabStats" aria-controls="paneStats" aria-selected="false" data-pane="paneStats">Stats</button>
-    <button class="tab" type="button" role="tab" id="tabLog" aria-controls="paneLog" aria-selected="false" data-pane="paneLog">Log</button>
-  </div>
-
-  <div class="panes">
-
-    <div class="pane" id="paneTasks" role="tabpanel" aria-labelledby="tabTasks">
-      <section class="panel">
-        <div class="pane-head">
-          <div>
-            <h2 class="panel__title">Next up</h2>
-            <p class="pane-head__copy">Plan a task, estimate it, then press play.</p>
-          </div>
-          <span class="queue-count" id="queueCount">0 queued</span>
+      <div class="custom-duration" id="customDuration" hidden>
+        <label for="customMinutesInput" class="custom-duration__label">Minutes</label>
+        <div class="stepper">
+          <button type="button" class="stepper__btn" id="customMinusBtn" aria-label="Decrease minutes">−</button>
+          <input type="number" id="customMinutesInput" class="stepper__input" min="1" max="120" value="10" inputmode="numeric">
+          <button type="button" class="stepper__btn" id="customPlusBtn" aria-label="Increase minutes">+</button>
         </div>
+      </div>
+
+      <div class="active-focus">
+        <div class="active-focus__head">
+          <label for="taskInput" class="active-focus__label">Current focus</label>
+          <input id="taskCategoryInput" class="category-chip-input" type="text" maxlength="30" placeholder="+ Category" autocomplete="off" list="categorySuggestions" aria-label="Current focus category">
+        </div>
+        <input id="taskInput" class="task-input task-input--hero" type="text" maxlength="60" placeholder="What deserves your attention?" autocomplete="off" list="taskSuggestions">
+      </div>
+
+      <section class="dial-wrap">
+        <svg class="dial" viewBox="0 0 300 300" aria-hidden="true">
+          <circle class="dial__track" cx="150" cy="150" r="130" />
+          <circle class="dial__progress" id="dialProgress" cx="150" cy="150" r="130" />
+        </svg>
+        <div class="dial__center">
+          <div class="dial__time" id="timeDisplay">25:00</div>
+          <div class="dial__label" id="modeLabel">Focus</div>
+        </div>
+      </section>
+
+      <section class="controls">
+        <button id="startPauseBtn" class="btn btn--primary" type="button">Start</button>
+        <button id="resetBtn" class="btn" type="button">Reset</button>
+      </section>
+
+      <section class="focus-progress" aria-label="Today's progress">
+        <div class="stats-row stats-row--compact">
+          <div class="stat"><div class="stat__value" id="statToday">0</div><div class="stat__label">Today</div></div>
+          <div class="stat"><div class="stat__value" id="statStreak">0</div><div class="stat__label">Streak</div></div>
+          <div class="stat"><div class="stat__value" id="statLevel">1</div><div class="stat__label">Level</div></div>
+        </div>
+        <button class="xp-panel xp-panel--link" id="openCollection" type="button" aria-label="Open Collection and rewards">
+          <span class="xp-panel__head"><span>XP</span><span id="xpText">0 / 100</span></span>
+          <span class="xp-bar"><span class="xp-bar__fill" id="xpFill"></span></span>
+          <span class="xp-panel__reward" id="xpReward">Level 2 unlocks Copper finish</span>
+        </button>
+      </section>
+
+      <section class="next-preview" id="focusNextPreview">
+        <div class="next-preview__copy">
+          <span class="next-preview__eyebrow">Next up</span>
+          <strong id="focusNextTask">Your queue is clear</strong>
+          <span id="focusNextMeta">Plan your next focus block</span>
+        </div>
+        <button id="focusNextStart" class="next-preview__action" type="button" aria-label="Start next queued task">›</button>
+      </section>
+    </div>
+
+    <div class="pane" id="panePlan" role="tabpanel" aria-labelledby="tabPlan" hidden>
+      <div class="screen-heading">
+        <div><p class="screen-heading__eyebrow">Plan</p><h2>Choose what matters next</h2></div>
+        <span class="queue-count" id="queueCount">0 queued</span>
+      </div>
+      <section class="panel">
         <div class="onboarding" id="onboarding">
           <p class="onboarding__eyebrow">Your first focused block</p>
           <ol class="onboarding__steps">
             <li><span>1</span> Add a task and estimate its time.</li>
-            <li><span>2</span> Press play to move it into Current focus.</li>
+            <li><span>2</span> Press play to make it your focus.</li>
             <li><span>3</span> Compare your estimate with time spent.</li>
           </ol>
           <button class="onboarding__cta" id="onboardingCta" type="button">Add your first task</button>
@@ -136,77 +119,73 @@
           <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
           <input type="text" id="todoCategoryInput" class="todo-add__category" maxlength="30" placeholder="Category (optional)" autocomplete="off" list="categorySuggestions" aria-label="Task category">
         </form>
-        <div class="todo-list" id="todoList">
-          <p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p>
-        </div>
+        <div class="todo-list" id="todoList"><p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p></div>
       </section>
     </div>
 
-    <div class="pane" id="paneStats" role="tabpanel" aria-labelledby="tabStats" hidden>
-      <section class="panel">
-        <div class="stats-figures">
-          <div class="figure">
-            <div class="figure__value" id="figTodayCount">0</div>
-            <div class="figure__label">Today</div>
-            <div class="figure__sub" id="figTodayMinutes">0m</div>
-          </div>
-          <div class="figure">
-            <div class="figure__value" id="figWeekCount">0</div>
-            <div class="figure__label">7 days</div>
-            <div class="figure__sub" id="figWeekMinutes">0m</div>
-          </div>
-          <div class="figure">
-            <div class="figure__value" id="figMonthCount">0</div>
-            <div class="figure__label">30 days</div>
-            <div class="figure__sub" id="figMonthMinutes">0m</div>
-          </div>
-        </div>
-        <div class="chart" id="statsChart"></div>
-        <p class="chart__note">Sessions per day · dashed line is your daily goal</p>
-      </section>
-
-      <section class="panel estimate-panel">
-        <div class="pane-head">
-          <div>
-            <h2 class="panel__title">Estimate accuracy</h2>
-            <p class="pane-head__copy">Finished tasks · last 30 days</p>
-          </div>
-        </div>
+    <div class="pane" id="paneInsights" role="tabpanel" aria-labelledby="tabInsights" hidden>
+      <div class="screen-heading"><div><p class="screen-heading__eyebrow">Insights</p><h2>Learn from your focus</h2></div></div>
+      <section class="panel insight-card insight-card--accent">
+        <div class="pane-head"><div><h3 class="panel__title">Estimate accuracy</h3><p class="pane-head__copy">Finished tasks · last 30 days</p></div></div>
         <div id="estimateEmpty" class="estimate-empty">Mark a timed task done to unlock estimate insights.</div>
         <div id="estimateContent" hidden>
           <div class="estimate-figures">
-            <div class="figure">
-              <div class="figure__value" id="estimateVariance">—</div>
-              <div class="figure__label">vs estimate</div>
-            </div>
-            <div class="figure">
-              <div class="figure__value" id="estimateOnTarget">—</div>
-              <div class="figure__label">within 20%</div>
-            </div>
-            <div class="figure">
-              <div class="figure__value" id="estimateTasks">0</div>
-              <div class="figure__label">tasks learned</div>
-            </div>
+            <div class="figure"><div class="figure__value" id="estimateVariance">—</div><div class="figure__label">vs estimate</div></div>
+            <div class="figure"><div class="figure__value" id="estimateOnTarget">—</div><div class="figure__label">within 20%</div></div>
+            <div class="figure"><div class="figure__value" id="estimateTasks">0</div><div class="figure__label">tasks learned</div></div>
           </div>
           <p class="estimate-insight" id="estimateInsight"></p>
         </div>
       </section>
-
-      <section class="panel">
-        <h2 class="panel__title">Badges</h2>
-        <div class="badges" id="badgesRow"></div>
+      <section class="panel insight-card">
+        <div class="stats-figures">
+          <div class="figure"><div class="figure__value" id="figTodayCount">0</div><div class="figure__label">Today</div><div class="figure__sub" id="figTodayMinutes">0m</div></div>
+          <div class="figure"><div class="figure__value" id="figWeekCount">0</div><div class="figure__label">7 days</div><div class="figure__sub" id="figWeekMinutes">0m</div></div>
+          <div class="figure"><div class="figure__value" id="figMonthCount">0</div><div class="figure__label">30 days</div><div class="figure__sub" id="figMonthMinutes">0m</div></div>
+        </div>
+        <div class="chart" id="statsChart"></div>
+        <p class="chart__note">Sessions per day · dashed line is your daily goal</p>
       </section>
+      <section class="panel insight-card">
+        <h3 class="panel__title">Focus by category</h3>
+        <div class="category-breakdown" id="categoryBreakdown"></div>
+      </section>
+      <details class="insights-history">
+        <summary>Recent session history</summary>
+        <div class="log" id="sessionLog"><p class="log__empty" id="logEmpty">No sessions logged yet. Start your first focus session.</p></div>
+      </details>
     </div>
 
-    <div class="pane" id="paneLog" role="tabpanel" aria-labelledby="tabLog" hidden>
-      <section class="panel">
-        <div class="log" id="sessionLog">
-          <p class="log__empty" id="logEmpty">No sessions logged yet. Start your first focus session.</p>
+    <div class="pane" id="paneCollection" role="tabpanel" aria-labelledby="tabCollection" hidden>
+      <div class="screen-heading"><div><p class="screen-heading__eyebrow">Collection</p><h2>Make the dial yours</h2></div><div class="token-pill" aria-label="Focus Token balance"><span aria-hidden="true">◆</span> <span id="workshopBalance">0</span></div></div>
+      <section class="collection-hero">
+        <div class="collection-level"><span>Level</span><strong id="collectionLevel">1</strong></div>
+        <div class="collection-progress">
+          <div class="xp-panel__head"><span>Progress</span><span id="collectionXpText">0 / 100 XP</span></div>
+          <div class="xp-bar"><div class="xp-bar__fill" id="collectionXpFill"></div></div>
+          <p id="collectionNextReward">Level 2 unlocks Copper finish</p>
         </div>
       </section>
+      <section class="panel collection-customize">
+        <h3 class="panel__title">Equipped</h3>
+        <div class="collection-control"><div><label for="setAccent">Dial finish</label><p>New finishes unlock as you level up.</p></div><select id="setAccent" class="setting-select"></select></div>
+        <div class="collection-control"><div><label for="setDialFace">Dial face</label><p>Chronograph unlocks at Level 10.</p></div><select id="setDialFace" class="setting-select"></select></div>
+        <div class="collection-control"><div><label for="setBackdrop">Backdrop</label><p>Collect more in the Workshop.</p></div><select id="setBackdrop" class="setting-select"></select></div>
+      </section>
+      <section class="panel workshop" aria-labelledby="workshopTitle">
+        <div class="workshop__head"><div><h3 class="panel__title" id="workshopTitle">Workshop</h3><p class="setting-help setting-help--wide" id="workshopHelp">Unlocks at Level 10. Level 11 awards your first Focus Token.</p></div></div>
+        <div class="workshop__list" id="workshopList"></div>
+      </section>
+      <section class="panel"><h3 class="panel__title">Badges</h3><div class="badges" id="badgesRow"></div></section>
     </div>
-
   </div>
+
+  <nav class="tabs app-nav" role="tablist" aria-label="Primary navigation">
+    <button class="tab" type="button" role="tab" id="tabFocus" aria-controls="paneFocus" aria-selected="true" data-pane="paneFocus"><span aria-hidden="true">◉</span><span>Focus</span></button>
+    <button class="tab" type="button" role="tab" id="tabPlan" aria-controls="panePlan" aria-selected="false" data-pane="panePlan"><span aria-hidden="true">☷</span><span>Plan</span></button>
+    <button class="tab" type="button" role="tab" id="tabInsights" aria-controls="paneInsights" aria-selected="false" data-pane="paneInsights"><span aria-hidden="true">⌁</span><span>Insights</span></button>
+    <button class="tab" type="button" role="tab" id="tabCollection" aria-controls="paneCollection" aria-selected="false" data-pane="paneCollection"><span aria-hidden="true">◆</span><span>Collection</span></button>
+  </nav>
 
   <div class="sheet" id="settingsSheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
     <div class="sheet__head">
@@ -264,30 +243,6 @@
         </select>
       </div>
 
-      <div class="setting-row setting-row--stacked">
-        <div>
-          <label for="setDialFace">Dial face</label>
-          <p class="setting-help">Chronograph unlocks at Level 10.</p>
-        </div>
-        <select id="setDialFace" class="setting-select"></select>
-      </div>
-
-      <div class="setting-row setting-row--stacked">
-        <div>
-          <label for="setBackdrop">Backdrop</label>
-          <p class="setting-help">Collect more in the Workshop.</p>
-        </div>
-        <select id="setBackdrop" class="setting-select"></select>
-      </div>
-
-      <div class="setting-row setting-row--stacked">
-        <div>
-          <label for="setAccent">Dial finish</label>
-          <p class="setting-help">New finishes unlock as you level up.</p>
-        </div>
-        <select id="setAccent" class="setting-select"></select>
-      </div>
-
       <div class="setting-row">
         <label for="setVolume">Volume</label>
         <input type="range" id="setVolume" class="setting-range" min="0" max="100" step="5">
@@ -302,21 +257,6 @@
         <input type="checkbox" id="setNotify">
         <span>Notify when a session ends</span>
       </label>
-
-      <div class="settings-divider"></div>
-
-      <section class="workshop" aria-labelledby="workshopTitle">
-        <div class="workshop__head">
-          <div>
-            <h3 class="settings-subtitle" id="workshopTitle">Workshop</h3>
-            <p class="setting-help setting-help--wide" id="workshopHelp">Unlocks at Level 10. Level 11 awards your first Focus Token.</p>
-          </div>
-          <div class="token-pill" aria-label="Focus Token balance"><span aria-hidden="true">◆</span> <span id="workshopBalance">0</span></div>
-        </div>
-        <div class="workshop__list" id="workshopList"></div>
-      </section>
-
-      <div class="settings-divider"></div>
 
       <label class="setting-check setting-check--stacked" id="focusGuardRow">
         <span class="setting-check__line">
@@ -379,7 +319,7 @@
 
 </main>
 
-<script src="logic.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="logic.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

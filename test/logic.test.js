@@ -21,6 +21,7 @@ const {
   normalizeSettings,
   sessionsPerDay,
   summarizeSessions,
+  summarizeEstimateAccuracy,
   formatMinutes,
   DEFAULT_SETTINGS,
   MAX_LOGGED_SESSIONS,
@@ -316,9 +317,16 @@ test("dial finishes unlock by level and expose the next reward", () => {
 });
 
 test("normalizeSettings coerces truthy/falsy toggles to real booleans", () => {
-  const s = normalizeSettings({ autoStart: "yes", notify: 0 });
+  const s = normalizeSettings({ autoStart: "yes", notify: 0, focusGuard: 1 });
   assert.equal(s.autoStart, true);
   assert.equal(s.notify, false);
+  assert.equal(s.focusGuard, true);
+});
+
+test("normalizeSettings keeps and bounds the Focus Guard app list", () => {
+  const s = normalizeSettings({ blockedApps: `  ${"A".repeat(300)}  ` });
+  assert.equal(s.blockedApps.length, 240);
+  assert.equal(normalizeSettings({ blockedApps: 42 }).blockedApps, DEFAULT_SETTINGS.blockedApps);
 });
 
 test("clampVolume holds volume within 0-1 and rounds to two decimals", () => {
@@ -383,6 +391,62 @@ test("summarizeSessions excludes sessions dated after today", () => {
   const totals = summarizeSessions(sessions, "2026-09-21");
   assert.deepEqual(totals.today, { count: 0, minutes: 0 });
   assert.deepEqual(totals.month, { count: 0, minutes: 0 });
+});
+
+test("summarizeEstimateAccuracy uses only explicitly finished tasks", () => {
+  const sessions = [
+    {
+      time: new Date(2026, 8, 21, 9, 0).toISOString(),
+      outcome: "done",
+      estimatedMinutes: 30,
+      actualMinutes: 45,
+      category: "Planning",
+    },
+    {
+      time: new Date(2026, 8, 20, 9, 0).toISOString(),
+      outcome: "done",
+      estimatedMinutes: 60,
+      actualMinutes: 60,
+      category: "Writing",
+    },
+    {
+      time: new Date(2026, 8, 19, 9, 0).toISOString(),
+      outcome: "continued",
+      estimatedMinutes: 10,
+      actualMinutes: 100,
+      category: "Ignore",
+    },
+  ];
+  const result = summarizeEstimateAccuracy(sessions, "2026-09-21", 30);
+  assert.equal(result.count, 2);
+  assert.equal(result.totalEstimated, 90);
+  assert.equal(result.totalActual, 105);
+  assert.equal(result.variancePercent, 17);
+  assert.equal(result.onTargetCount, 1);
+  assert.equal(result.onTargetPercent, 50);
+  assert.equal(result.mostUnderestimatedCategory.category, "Planning");
+});
+
+test("summarizeEstimateAccuracy excludes invalid and out-of-window completions", () => {
+  const sessions = [
+    { time: new Date(2026, 7, 1).toISOString(), outcome: "done", estimatedMinutes: 30, actualMinutes: 35 },
+    { time: new Date(2026, 8, 21).toISOString(), outcome: "done", estimatedMinutes: 0, actualMinutes: 35 },
+    { time: "not-a-date", outcome: "done", estimatedMinutes: 30, actualMinutes: 35 },
+    { time: new Date(2026, 8, 21).toISOString(), outcome: "queued", estimatedMinutes: 30, actualMinutes: 35 },
+  ];
+  assert.equal(summarizeEstimateAccuracy(sessions, "2026-09-21", 30).count, 0);
+});
+
+test("summarizeEstimateAccuracy groups category names case-insensitively", () => {
+  const sessions = [
+    { time: new Date(2026, 8, 21).toISOString(), outcome: "done", estimatedMinutes: 10, actualMinutes: 15, category: "Email" },
+    { time: new Date(2026, 8, 20).toISOString(), outcome: "done", estimatedMinutes: 20, actualMinutes: 30, category: "email" },
+  ];
+  const result = summarizeEstimateAccuracy(sessions, "2026-09-21", 30);
+  assert.equal(result.categories.length, 1);
+  assert.equal(result.categories[0].category, "Email");
+  assert.equal(result.categories[0].count, 2);
+  assert.equal(result.categories[0].variancePercent, 50);
 });
 
 test("formatMinutes renders minutes, hours, and mixed durations", () => {

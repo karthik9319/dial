@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage } = require("electron");
+const { execFile } = require("child_process");
 const path = require("path");
 
 /* Dev runs (`electron .`) share the generic "Electron" app bundle, so the
@@ -25,6 +26,13 @@ let win = null;
 let tray = null;
 let quitting = false;
 let timerState = { display: "", running: false, label: "Focus" };
+let guardTimer = null;
+let guardBusy = false;
+let guardActive = false;
+let guardGeneration = 0;
+let guardApps = [];
+let lastGuardedApp = "";
+let lastGuardedAt = 0;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -113,6 +121,71 @@ ipcMain.on("dial:timer-update", (_event, snapshot) => {
   refreshTray();
 });
 
+function stopFocusGuard() {
+  if (guardTimer) clearInterval(guardTimer);
+  guardTimer = null;
+  guardBusy = false;
+  guardActive = false;
+  guardGeneration += 1;
+}
+
+function runAppleScript(args, callback) {
+  execFile("/usr/bin/osascript", args, { timeout: 2500 }, callback);
+}
+
+function checkFocusGuard() {
+  if (!guardActive || guardBusy || !guardApps.length || process.platform !== "darwin") return;
+  guardBusy = true;
+  const generation = guardGeneration;
+  runAppleScript(
+    ["-e", 'tell application "System Events" to get name of first application process whose frontmost is true'],
+    (error, stdout) => {
+      if (generation !== guardGeneration) return;
+      const frontmost = String(stdout || "").trim();
+      const blocked = !error && guardApps.find((name) => name.toLocaleLowerCase() === frontmost.toLocaleLowerCase());
+      if (!guardActive || !blocked || frontmost === "Dial" || frontmost === "Electron") {
+        guardBusy = false;
+        return;
+      }
+      const now = Date.now();
+      if (lastGuardedApp === frontmost && now - lastGuardedAt < 3000) {
+        guardBusy = false;
+        return;
+      }
+      /* The app name is passed as argv, never interpolated into AppleScript. */
+      runAppleScript(
+        [
+          "-e", "on run argv",
+          "-e", "set targetName to item 1 of argv",
+          "-e", 'tell application "System Events" to set visible of process targetName to false',
+          "-e", "end run",
+          frontmost,
+        ],
+        (hideError) => {
+          if (generation !== guardGeneration) return;
+          guardBusy = false;
+          if (hideError || !guardActive) return;
+          lastGuardedApp = frontmost;
+          lastGuardedAt = now;
+          showWindow();
+          if (win && !win.isDestroyed()) win.webContents.send("dial:guard-blocked", { app: frontmost });
+        }
+      );
+    }
+  );
+}
+
+ipcMain.on("dial:focus-guard", (_event, config) => {
+  stopFocusGuard();
+  guardApps = Array.isArray(config && config.apps)
+    ? config.apps.map((name) => String(name).trim()).filter(Boolean).slice(0, 20)
+    : [];
+  if (!config || !config.active || !guardApps.length || process.platform !== "darwin") return;
+  guardActive = true;
+  checkFocusGuard();
+  guardTimer = setInterval(checkFocusGuard, 1500);
+});
+
 /* Bouncing the Dock needs no permission, so it's the one alert that always
    lands — including unpackaged dev runs, where macOS refuses notifications
    from the generic Electron bundle (UNErrorDomain 1). A "critical" bounce
@@ -157,6 +230,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", () => {
   quitting = true;
+  stopFocusGuard();
 });
 
 app.on("window-all-closed", () => {

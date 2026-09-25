@@ -42,6 +42,8 @@
     alarmSound: "chime",
     alarmVolume: 0.6,
     accent: "brass",
+    focusGuard: false,
+    blockedApps: "Slack, Discord, Music",
   };
 
   const BADGE_DEFS = [
@@ -190,6 +192,10 @@
       alarmSound: ALARM_SOUNDS.indexOf(s.alarmSound) >= 0 ? s.alarmSound : DEFAULT_SETTINGS.alarmSound,
       alarmVolume: clampVolume(s.alarmVolume),
       accent: ACCENT_REWARDS.some((item) => item.id === s.accent) ? s.accent : DEFAULT_SETTINGS.accent,
+      focusGuard: !!s.focusGuard,
+      blockedApps: typeof s.blockedApps === "string"
+        ? s.blockedApps.trim().slice(0, 240)
+        : DEFAULT_SETTINGS.blockedApps,
     };
   }
 
@@ -275,6 +281,82 @@
     return totals;
   }
 
+  /**
+   * Compares estimates with actual elapsed time for tasks explicitly marked
+   * done in the rolling window. Focus blocks that were continued or returned
+   * to the queue are deliberately excluded: an elapsed timer is not proof that
+   * the task itself was completed.
+   */
+  function summarizeEstimateAccuracy(sessions, today, days) {
+    const span = clampInt(days || 30, 1, 366);
+    const end = parseDay(today || todayStr());
+    const endStamp = end.getTime();
+    const startStamp = new Date(end.getFullYear(), end.getMonth(), end.getDate() - span + 1).getTime();
+    const completed = [];
+
+    (sessions || []).forEach((session) => {
+      if (!session || session.outcome !== "done") return;
+      const when = new Date(session.time);
+      if (isNaN(when.getTime())) return;
+      const dayStamp = new Date(when.getFullYear(), when.getMonth(), when.getDate()).getTime();
+      const estimated = Number(session.estimatedMinutes);
+      const actual = Number(session.actualMinutes);
+      if (dayStamp < startStamp || dayStamp > endStamp || estimated <= 0 || actual < 0) return;
+      completed.push({
+        estimated,
+        actual,
+        category: typeof session.category === "string" ? session.category.trim() : "",
+      });
+    });
+
+    const totalEstimated = completed.reduce((sum, item) => sum + item.estimated, 0);
+    const totalActual = completed.reduce((sum, item) => sum + item.actual, 0);
+    const onTargetCount = completed.filter(
+      (item) => Math.abs(item.actual - item.estimated) / item.estimated <= 0.2
+    ).length;
+    const variancePercent = totalEstimated
+      ? Math.round(((totalActual - totalEstimated) / totalEstimated) * 100)
+      : 0;
+
+    const groups = new Map();
+    completed.forEach((item) => {
+      if (!item.category) return;
+      const key = item.category.toLocaleLowerCase();
+      const current = groups.get(key) || {
+        category: item.category,
+        count: 0,
+        estimatedMinutes: 0,
+        actualMinutes: 0,
+      };
+      current.count += 1;
+      current.estimatedMinutes += item.estimated;
+      current.actualMinutes += item.actual;
+      groups.set(key, current);
+    });
+
+    const categories = Array.from(groups.values())
+      .map((group) => Object.assign(group, {
+        variancePercent: group.estimatedMinutes
+          ? Math.round(((group.actualMinutes - group.estimatedMinutes) / group.estimatedMinutes) * 100)
+          : 0,
+      }))
+      .sort((a, b) => b.count - a.count || b.variancePercent - a.variancePercent);
+    const underestimated = categories
+      .filter((group) => group.variancePercent > 0)
+      .sort((a, b) => b.variancePercent - a.variancePercent)[0] || null;
+
+    return {
+      count: completed.length,
+      totalEstimated: Math.round(totalEstimated),
+      totalActual: Math.round(totalActual),
+      variancePercent,
+      onTargetCount,
+      onTargetPercent: completed.length ? Math.round((onTargetCount / completed.length) * 100) : 0,
+      categories,
+      mostUnderestimatedCategory: underestimated,
+    };
+  }
+
   /** Renders a minute count as "45m" or "1h 20m". */
   function formatMinutes(minutes) {
     const total = Math.max(0, Math.round(Number(minutes) || 0));
@@ -343,6 +425,7 @@
     normalizeSettings,
     sessionsPerDay,
     summarizeSessions,
+    summarizeEstimateAccuracy,
     formatMinutes,
   };
 

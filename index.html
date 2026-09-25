@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 
@@ -51,10 +51,14 @@
         <label for="taskInput" class="active-focus__label">Current focus</label>
         <span class="active-focus__hint">or start one from Next up</span>
       </div>
-      <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="Name this focus session…" autocomplete="off" list="taskSuggestions">
+      <div class="active-focus__fields">
+        <input id="taskInput" class="task-input" type="text" maxlength="60" placeholder="Name this focus session…" autocomplete="off" list="taskSuggestions">
+        <input id="taskCategoryInput" class="category-input" type="text" maxlength="30" placeholder="Category (optional)" autocomplete="off" list="categorySuggestions" aria-label="Current focus category">
+      </div>
     </div>
 
     <datalist id="taskSuggestions"></datalist>
+    <datalist id="categorySuggestions"></datalist>
 
     <section class="dial-wrap">
       <svg class="dial" viewBox="0 0 300 300" aria-hidden="true">
@@ -130,6 +134,7 @@
           <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
           <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
           <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
+          <input type="text" id="todoCategoryInput" class="todo-add__category" maxlength="30" placeholder="Category (optional)" autocomplete="off" list="categorySuggestions" aria-label="Task category">
         </form>
         <div class="todo-list" id="todoList">
           <p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p>
@@ -158,6 +163,33 @@
         </div>
         <div class="chart" id="statsChart"></div>
         <p class="chart__note">Sessions per day · dashed line is your daily goal</p>
+      </section>
+
+      <section class="panel estimate-panel">
+        <div class="pane-head">
+          <div>
+            <h2 class="panel__title">Estimate accuracy</h2>
+            <p class="pane-head__copy">Finished tasks · last 30 days</p>
+          </div>
+        </div>
+        <div id="estimateEmpty" class="estimate-empty">Mark a timed task done to unlock estimate insights.</div>
+        <div id="estimateContent" hidden>
+          <div class="estimate-figures">
+            <div class="figure">
+              <div class="figure__value" id="estimateVariance">—</div>
+              <div class="figure__label">vs estimate</div>
+            </div>
+            <div class="figure">
+              <div class="figure__value" id="estimateOnTarget">—</div>
+              <div class="figure__label">within 20%</div>
+            </div>
+            <div class="figure">
+              <div class="figure__value" id="estimateTasks">0</div>
+              <div class="figure__label">tasks learned</div>
+            </div>
+          </div>
+          <p class="estimate-insight" id="estimateInsight"></p>
+        </div>
       </section>
 
       <section class="panel">
@@ -254,6 +286,59 @@
         <span>Notify when a session ends</span>
       </label>
 
+      <div class="settings-divider"></div>
+
+      <label class="setting-check setting-check--stacked" id="focusGuardRow">
+        <span class="setting-check__line">
+          <input type="checkbox" id="setFocusGuard">
+          <span>Focus Guard</span>
+        </span>
+        <span class="setting-help" id="focusGuardHelp">Hide selected macOS apps while a focus timer runs.</span>
+      </label>
+
+      <div class="setting-field">
+        <label for="setBlockedApps">Apps to hide</label>
+        <input type="text" id="setBlockedApps" class="setting-text" maxlength="240" placeholder="Slack, Discord, Music">
+        <p class="setting-help">Use app names separated by commas. macOS may ask for Automation permission.</p>
+      </div>
+
+      <div class="settings-divider"></div>
+
+      <section class="data-tools" aria-labelledby="dataToolsTitle">
+        <h3 class="settings-subtitle" id="dataToolsTitle">Your data</h3>
+        <p class="setting-help setting-help--wide">Keep a portable backup or export your sessions for analysis.</p>
+        <div class="data-tools__buttons">
+          <button class="settings-action" type="button" id="exportBackup">Backup JSON</button>
+          <button class="settings-action" type="button" id="exportCsv">Sessions CSV</button>
+          <button class="settings-action" type="button" id="importBackup">Restore backup</button>
+        </div>
+        <input type="file" id="importBackupFile" accept="application/json,.json" hidden>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="sheet completion-sheet" id="completionSheet" role="dialog" aria-modal="true" aria-labelledby="completionTitle" hidden>
+    <div class="completion-sheet__body">
+      <p class="completion-sheet__eyebrow">Focus block complete</p>
+      <h2 class="completion-sheet__title" id="completionTitle">Is the task finished?</h2>
+      <p class="completion-sheet__task" id="completionTask"></p>
+      <div class="completion-sheet__timing" id="completionTiming"></div>
+      <label class="completion-field">
+        <span>Category</span>
+        <input type="text" id="completionCategory" maxlength="30" list="categorySuggestions" placeholder="Optional">
+      </label>
+      <label class="completion-field">
+        <span>Quick note</span>
+        <textarea id="completionNote" maxlength="240" rows="3" placeholder="What helped, blocked, or changed?"></textarea>
+      </label>
+      <div class="completion-actions">
+        <button class="btn btn--primary completion-actions__done" id="completionDone" type="button">Done</button>
+        <button class="btn" id="completionContinue" type="button">Continue +5 min</button>
+        <button class="btn" id="completionAnother" type="button">Another block</button>
+        <button class="completion-actions__queue" id="completionQueue" type="button">Return to queue</button>
+      </div>
+      <p class="completion-sheet__help">The focus block is already logged. Only Done closes the task and adds it to estimate accuracy.</p>
     </div>
   </div>
 
@@ -264,7 +349,7 @@
 
 </main>
 
-<script src="logic.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="logic.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

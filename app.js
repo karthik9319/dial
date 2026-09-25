@@ -27,6 +27,7 @@
     normalizeSettings,
     sessionsPerDay,
     summarizeSessions,
+    summarizeEstimateAccuracy,
     formatMinutes,
   } = window.DialLogic;
 
@@ -72,17 +73,14 @@
     };
   }
 
-  function loadState() {
-    let stored = null;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) stored = JSON.parse(raw);
-    } catch (e) {
-      stored = null;
-    }
+  function normalizeState(stored) {
     const state = Object.assign(defaultState(), stored || {});
     state.badges = Object.assign({}, stored && stored.badges);
-    state.sessions = capSessions(Array.isArray(state.sessions) ? state.sessions : []);
+    state.sessions = capSessions(
+      (Array.isArray(state.sessions) ? state.sessions : []).filter(
+        (session) => session && typeof session === "object" && !Array.isArray(session)
+      )
+    );
     if (!stored || !Number.isFinite(Number(stored.focusSessions))) {
       /* Older versions tracked all work together. Rebuild the focus-only
          cadence so custom errands cannot trigger long breaks. */
@@ -93,9 +91,22 @@
     /* Finished tasks used to linger in the list with a `done` flag; they now
        leave it outright, so drop any left over from that older format. */
     const todos = (Array.isArray(state.todos) ? state.todos : []).filter((t) => t && !t.done);
-    state.todos = capTodos(todos);
+    state.todos = capTodos(todos).map((todo) => ({
+      id: todo.id || makeId(),
+      text: String(todo.text || "Untitled task").trim().slice(0, 60) || "Untitled task",
+      category: typeof todo.category === "string" ? todo.category.trim().slice(0, 30) : "",
+      minutes: clampMinutes(todo.minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES),
+      actualSeconds: Math.max(0, Number(todo.actualSeconds) || 0),
+      createdAt: todo.createdAt || new Date().toISOString(),
+    }));
     state.customMinutes = clampMinutes(state.customMinutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
     state.settings = normalizeSettings(state.settings);
+    state.xp = Math.max(0, Math.round(Number(state.xp) || 0));
+    state.level = Math.max(1, Math.round(Number(state.level) || 1));
+    state.currentStreak = Math.max(0, Math.round(Number(state.currentStreak) || 0));
+    state.longestStreak = Math.max(0, Math.round(Number(state.longestStreak) || 0));
+    state.todayCount = Math.max(0, Math.round(Number(state.todayCount) || 0));
+    state.totalSessions = Math.max(0, Math.round(Number(state.totalSessions) || 0));
 
     const now = todayStr();
     if (state.today !== now) {
@@ -103,6 +114,17 @@
       state.todayCount = 0;
     }
     return state;
+  }
+
+  function loadState() {
+    let stored = null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) stored = JSON.parse(raw);
+    } catch (e) {
+      stored = null;
+    }
+    return normalizeState(stored);
   }
 
   function saveState(state) {
@@ -134,6 +156,7 @@
           running,
           sessionStart: sessionStart ? sessionStart.toISOString() : null,
           taskDraft: el.taskInput.value,
+          categoryDraft: el.taskCategoryInput.value,
           activeTodoId,
         })
       );
@@ -170,8 +193,10 @@
   let tickHandle = null;
   let sessionStart = null;
   let pendingTaskDraft = "";
+  let pendingCategoryDraft = "";
   let activeTodoId = null;
   let editingTodoId = null;
+  let pendingCompletion = null;
 
   /* Resume an in-flight timer left over from before a reload/close, if any. */
   (function restoreTimer() {
@@ -182,6 +207,7 @@
     totalDuration = durationFor(mode);
     sessionStart = snap.sessionStart ? new Date(snap.sessionStart) : null;
     pendingTaskDraft = snap.taskDraft || "";
+    pendingCategoryDraft = snap.categoryDraft || "";
     activeTodoId = snap.activeTodoId || null;
 
     if (snap.running && typeof snap.endTime === "number") {
@@ -207,6 +233,7 @@
     themeToggle: document.getElementById("themeToggle"),
     modeButtons: Array.from(document.querySelectorAll(".mode-btn")),
     taskInput: document.getElementById("taskInput"),
+    taskCategoryInput: document.getElementById("taskCategoryInput"),
     customDuration: document.getElementById("customDuration"),
     customMinutesInput: document.getElementById("customMinutesInput"),
     customMinusBtn: document.getElementById("customMinusBtn"),
@@ -214,11 +241,13 @@
     todoForm: document.getElementById("todoForm"),
     todoInput: document.getElementById("todoInput"),
     todoMinutesInput: document.getElementById("todoMinutesInput"),
+    todoCategoryInput: document.getElementById("todoCategoryInput"),
     todoList: document.getElementById("todoList"),
     onboarding: document.getElementById("onboarding"),
     onboardingCta: document.getElementById("onboardingCta"),
     queueCount: document.getElementById("queueCount"),
     taskSuggestions: document.getElementById("taskSuggestions"),
+    categorySuggestions: document.getElementById("categorySuggestions"),
     dialProgress: document.getElementById("dialProgress"),
     timeDisplay: document.getElementById("timeDisplay"),
     modeLabel: document.getElementById("modeLabel"),
@@ -240,6 +269,12 @@
     figMonthCount: document.getElementById("figMonthCount"),
     figMonthMinutes: document.getElementById("figMonthMinutes"),
     statsChart: document.getElementById("statsChart"),
+    estimateEmpty: document.getElementById("estimateEmpty"),
+    estimateContent: document.getElementById("estimateContent"),
+    estimateVariance: document.getElementById("estimateVariance"),
+    estimateOnTarget: document.getElementById("estimateOnTarget"),
+    estimateTasks: document.getElementById("estimateTasks"),
+    estimateInsight: document.getElementById("estimateInsight"),
     setFocus: document.getElementById("setFocus"),
     setShort: document.getElementById("setShort"),
     setLong: document.getElementById("setLong"),
@@ -249,6 +284,14 @@
     setVolume: document.getElementById("setVolume"),
     setAutoStart: document.getElementById("setAutoStart"),
     setNotify: document.getElementById("setNotify"),
+    setFocusGuard: document.getElementById("setFocusGuard"),
+    setBlockedApps: document.getElementById("setBlockedApps"),
+    focusGuardRow: document.getElementById("focusGuardRow"),
+    focusGuardHelp: document.getElementById("focusGuardHelp"),
+    exportBackup: document.getElementById("exportBackup"),
+    exportCsv: document.getElementById("exportCsv"),
+    importBackup: document.getElementById("importBackup"),
+    importBackupFile: document.getElementById("importBackupFile"),
     stepButtons: Array.from(document.querySelectorAll("[data-step]")),
     tabs: Array.from(document.querySelectorAll(".tab")),
     panes: Array.from(document.querySelectorAll(".pane")),
@@ -257,6 +300,15 @@
     closeSettings: document.getElementById("closeSettings"),
     rewardToast: document.getElementById("rewardToast"),
     rewardToastText: document.getElementById("rewardToastText"),
+    completionSheet: document.getElementById("completionSheet"),
+    completionTask: document.getElementById("completionTask"),
+    completionTiming: document.getElementById("completionTiming"),
+    completionCategory: document.getElementById("completionCategory"),
+    completionNote: document.getElementById("completionNote"),
+    completionDone: document.getElementById("completionDone"),
+    completionContinue: document.getElementById("completionContinue"),
+    completionAnother: document.getElementById("completionAnother"),
+    completionQueue: document.getElementById("completionQueue"),
   };
 
   /** Maps a numeric setting key to its input element. */
@@ -269,6 +321,7 @@
 
   el.dialProgress.style.strokeDasharray = `${RING_CIRCUMFERENCE}`;
   if (pendingTaskDraft) el.taskInput.value = pendingTaskDraft;
+  if (pendingCategoryDraft) el.taskCategoryInput.value = pendingCategoryDraft;
 
   if (running) {
     tickHandle = setInterval(tick, 250);
@@ -409,6 +462,29 @@
     shell.updateTimer({ display, running, label: MODE_LABELS[mode] });
   }
 
+  let lastGuardSignature = null;
+  function updateFocusGuard() {
+    if (!shell || shell.platform !== "darwin" || !shell.configureGuard) return;
+    const active = state.settings.focusGuard && running && (mode === "focus" || mode === "custom");
+    const apps = state.settings.blockedApps
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    const signature = `${active}|${apps.join("|")}`;
+    if (signature === lastGuardSignature) return;
+    lastGuardSignature = signature;
+    shell.configureGuard({ active, apps });
+  }
+
+  if (shell && shell.onGuardBlocked) {
+    shell.onGuardBlocked((payload) => {
+      const appName = payload && payload.app ? payload.app : "That app";
+      showStatusToast(`${appName} was hidden by Focus Guard`);
+      announce(`${appName} was hidden by Focus Guard.`);
+    });
+  }
+
   /* ---------------- Badges ---------------- */
   function renderBadges() {
     el.badgesRow.innerHTML = "";
@@ -430,22 +506,31 @@
   }
 
   /* ---------------- To-do list ---------------- */
-  function makeTodoId() {
+  function makeId() {
     return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
-  function addTodo(text, minutes) {
+  function cleanCategory(category) {
+    return String(category || "").trim().slice(0, 30);
+  }
+
+  function addTodo(text, minutes, category, actualSeconds) {
     const trimmed = (text || "").trim().slice(0, 60);
-    if (!trimmed) return;
-    state.todos.unshift({
-      id: makeTodoId(),
+    if (!trimmed) return null;
+    const todo = {
+      id: makeId(),
       text: trimmed,
+      category: cleanCategory(category),
       minutes: clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES),
+      actualSeconds: Math.max(0, Number(actualSeconds) || 0),
       createdAt: new Date().toISOString(),
-    });
+    };
+    state.todos.unshift(todo);
     state.todos = capTodos(state.todos);
     saveState(state);
     renderTodos();
+    renderSuggestions();
+    return todo;
   }
 
   /* Finishing a task takes it off the list — the Session Log keeps the record. */
@@ -467,11 +552,12 @@
     renderTodos();
   }
 
-  function updateTodo(id, text, minutes) {
+  function updateTodo(id, text, minutes, category) {
     const todo = state.todos.find((t) => t.id === id);
     if (!todo) return;
     const trimmed = (text || "").trim().slice(0, 60);
     if (trimmed) todo.text = trimmed;
+    todo.category = cleanCategory(category);
     todo.minutes = clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
     editingTodoId = null;
     saveState(state);
@@ -482,27 +568,29 @@
     if (running) return;
     const todo = state.todos.find((t) => t.id === id);
     if (!todo) return;
+    if (activeTodoId) releaseActiveTodo(elapsedSeconds());
     state.customMinutes = todo.minutes;
     saveState(state);
     setMode("custom", { keepActiveTodo: true });
     activeTodoId = todo.id;
     el.taskInput.value = todo.text;
+    el.taskCategoryInput.value = todo.category || "";
     saveTimerSnapshot();
     start();
   }
 
   /**
-   * Credits time actually spent to the active to-do and detaches it. Called
-   * whenever a to-do-linked session ends — finished, reset, or abandoned by
-   * switching modes — so "spent" reflects real effort, not just completions.
+   * Credits time actually spent to the active to-do and optionally detaches
+   * it. A reset keeps the same task attached; switching modes abandons the
+   * active assignment but preserves the effort already spent.
    */
-  function releaseActiveTodo(elapsedSeconds) {
+  function releaseActiveTodo(elapsedSeconds, detach = true) {
     if (!activeTodoId) return;
     const todo = state.todos.find((t) => t.id === activeTodoId);
     if (todo && elapsedSeconds > 0) {
       todo.actualSeconds = (todo.actualSeconds || 0) + Math.round(elapsedSeconds);
     }
-    activeTodoId = null;
+    if (detach) activeTodoId = null;
   }
 
   function elapsedSeconds() {
@@ -537,6 +625,7 @@
       check.type = "button";
       check.className = "todo-item__check";
       check.setAttribute("aria-label", `Mark "${todo.text}" done`);
+      check.disabled = running && activeTodoId === todo.id;
       check.addEventListener("click", () => removeTodo(todo.id));
 
       const main = document.createElement("div");
@@ -549,10 +638,10 @@
       const minutes = document.createElement("div");
       minutes.className = "todo-item__minutes";
       if (todo.actualSeconds) {
-        minutes.textContent = `est ${todo.minutes}m · spent ${formatMinutes(spentMinutes)}`;
+        minutes.textContent = `${todo.category ? `${todo.category} · ` : ""}est ${todo.minutes}m · spent ${formatMinutes(spentMinutes)}`;
         if (spentMinutes > todo.minutes) minutes.classList.add("is-over");
       } else {
-        minutes.textContent = `est ${todo.minutes}m`;
+        minutes.textContent = `${todo.category ? `${todo.category} · ` : ""}est ${todo.minutes}m`;
       }
 
       main.appendChild(text);
@@ -611,6 +700,15 @@
     minutes.value = String(todo.minutes);
     minutes.setAttribute("aria-label", "Minutes");
 
+    const category = document.createElement("input");
+    category.type = "text";
+    category.className = "todo-item__edit-category";
+    category.maxLength = 30;
+    category.value = todo.category || "";
+    category.setAttribute("aria-label", "Category");
+    category.setAttribute("placeholder", "Category");
+    category.setAttribute("list", "categorySuggestions");
+
     const save = document.createElement("button");
     save.type = "submit";
     save.className = "todo-item__save";
@@ -626,7 +724,7 @@
 
     row.addEventListener("submit", (e) => {
       e.preventDefault();
-      updateTodo(todo.id, text.value, minutes.value);
+      updateTodo(todo.id, text.value, minutes.value, category.value);
     });
     row.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
@@ -636,6 +734,7 @@
     });
 
     row.appendChild(text);
+    row.appendChild(category);
     row.appendChild(minutes);
     row.appendChild(save);
     row.appendChild(cancel);
@@ -657,18 +756,39 @@
       opt.value = name;
       el.taskSuggestions.appendChild(opt);
     });
+
+    const categories = [];
+    const seenCategories = new Set();
+    [...state.todos, ...state.sessions].forEach((item) => {
+      const category = cleanCategory(item.category);
+      const key = category.toLocaleLowerCase();
+      if (!category || seenCategories.has(key)) return;
+      seenCategories.add(key);
+      categories.push(category);
+    });
+    el.categorySuggestions.innerHTML = "";
+    categories.slice(0, 20).forEach((category) => {
+      const opt = document.createElement("option");
+      opt.value = category;
+      el.categorySuggestions.appendChild(opt);
+    });
   }
 
   /* ---------------- Session log ---------------- */
-  function addLogEntry(task, xpEarned, minutes, sessionMode) {
-    state.sessions.unshift({
+  function addLogEntry(task, xpEarned, minutes, sessionMode, category) {
+    const entry = {
+      id: makeId(),
       task: task || "Untitled focus session",
       time: new Date().toISOString(),
       xp: xpEarned,
       minutes,
       mode: sessionMode,
-    });
+      category: cleanCategory(category),
+      outcome: "block",
+    };
+    state.sessions.unshift(entry);
     state.sessions = capSessions(state.sessions);
+    return entry;
   }
 
   function renderLog() {
@@ -695,15 +815,31 @@
       const time = document.createElement("div");
       time.className = "log-entry__time";
       const d = new Date(entry.time);
-      time.textContent = d.toLocaleString(undefined, {
+      const when = d.toLocaleString(undefined, {
         month: "short",
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
       });
+      const details = [];
+      if (entry.category) details.push(entry.category);
+      if (entry.outcome === "done" && Number.isFinite(Number(entry.actualMinutes))) {
+        details.push(`est ${formatMinutes(entry.estimatedMinutes)} / actual ${formatMinutes(entry.actualMinutes)}`);
+      } else if (entry.outcome === "queued") {
+        details.push("returned to queue");
+      } else if (entry.outcome === "continued") {
+        details.push("continued");
+      }
+      time.textContent = details.length ? `${when} · ${details.join(" · ")}` : when;
 
       main.appendChild(task);
       main.appendChild(time);
+      if (entry.note) {
+        const note = document.createElement("div");
+        note.className = "log-entry__note";
+        note.textContent = entry.note;
+        main.appendChild(note);
+      }
 
       const xp = document.createElement("div");
       xp.className = "log-entry__xp";
@@ -778,6 +914,26 @@
 
     el.statsChart.appendChild(plot);
     el.statsChart.appendChild(labels);
+
+    const accuracy = summarizeEstimateAccuracy(state.sessions, todayStr(), 30);
+    el.estimateEmpty.hidden = accuracy.count > 0;
+    el.estimateContent.hidden = accuracy.count === 0;
+    if (accuracy.count) {
+      const sign = accuracy.variancePercent > 0 ? "+" : "";
+      el.estimateVariance.textContent = `${sign}${accuracy.variancePercent}%`;
+      el.estimateOnTarget.textContent = `${accuracy.onTargetPercent}%`;
+      el.estimateTasks.textContent = String(accuracy.count);
+      if (accuracy.mostUnderestimatedCategory) {
+        const group = accuracy.mostUnderestimatedCategory;
+        el.estimateInsight.textContent = `${group.category} runs about ${group.variancePercent}% over your estimates. Try adding that buffer next time.`;
+      } else if (accuracy.variancePercent > 10) {
+        el.estimateInsight.textContent = `Tasks are taking about ${accuracy.variancePercent}% longer than estimated. Try adding that buffer next time.`;
+      } else if (accuracy.variancePercent < -10) {
+        el.estimateInsight.textContent = `You are finishing about ${Math.abs(accuracy.variancePercent)}% faster than estimated. Your next estimates can be tighter.`;
+      } else {
+        el.estimateInsight.textContent = "Your estimates are tracking closely with actual time. Keep marking tasks done to improve the signal.";
+      }
+    }
   }
 
   /* ---------------- Settings ---------------- */
@@ -800,6 +956,16 @@
     el.setVolume.disabled = state.settings.alarmSound === "none";
     el.setAutoStart.checked = state.settings.autoStart;
     el.setNotify.checked = state.settings.notify;
+    el.setFocusGuard.checked = state.settings.focusGuard;
+    el.setBlockedApps.value = state.settings.blockedApps;
+    const guardAvailable = !!(shell && shell.platform === "darwin" && shell.configureGuard);
+    el.setFocusGuard.disabled = !guardAvailable;
+    el.setBlockedApps.disabled = !guardAvailable || !state.settings.focusGuard;
+    el.focusGuardRow.classList.toggle("is-unavailable", !guardAvailable);
+    el.setBlockedApps.closest(".setting-field").classList.toggle("is-unavailable", !guardAvailable);
+    el.focusGuardHelp.textContent = guardAvailable
+      ? "Hide selected macOS apps while a focus timer runs."
+      : "Available in the macOS desktop app; browser pages cannot control other apps.";
   }
 
   function updateSetting(key, value) {
@@ -816,6 +982,7 @@
 
     renderSettings();
     if (key === "accent") applyAccent();
+    if (key === "focusGuard" || key === "blockedApps") updateFocusGuard();
     renderStats();
     renderStatsPanel();
   }
@@ -823,6 +990,97 @@
   function stepSetting(key, delta) {
     const [min, max] = SETTING_RANGES[key];
     updateSetting(key, clampInt(state.settings[key] + delta, min, max));
+  }
+
+  /* ---------------- Portable data ---------------- */
+  function downloadFile(filename, contents, mimeType) {
+    const blob = new Blob([contents], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportBackup() {
+    const payload = {
+      format: "dial-backup",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      state,
+    };
+    downloadFile(`dial-backup-${todayStr()}.json`, JSON.stringify(payload, null, 2), "application/json");
+    showStatusToast("Backup downloaded");
+  }
+
+  function csvCell(value) {
+    const text = value === null || value === undefined ? "" : String(value);
+    /* Prevent user-entered task names/notes from becoming spreadsheet formulas. */
+    const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+    return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+  }
+
+  function exportSessionsCsv() {
+    const columns = [
+      "time", "task", "category", "block_minutes", "outcome",
+      "estimated_minutes", "actual_minutes", "xp", "note",
+    ];
+    const rows = state.sessions.map((session) => [
+      session.time,
+      session.task,
+      session.category,
+      session.minutes,
+      session.outcome,
+      session.estimatedMinutes,
+      session.actualMinutes,
+      session.xp,
+      session.note,
+    ].map(csvCell).join(","));
+    const csv = [columns.join(","), ...rows].join("\n");
+    downloadFile(`dial-sessions-${todayStr()}.csv`, csv, "text/csv;charset=utf-8");
+    showStatusToast("Sessions CSV downloaded");
+  }
+
+  async function restoreBackup(file) {
+    try {
+      if (!file || file.size > 5 * 1024 * 1024) throw new Error("Choose a Dial JSON backup under 5 MB.");
+      const parsed = JSON.parse(await file.text());
+      const restored = parsed && parsed.format === "dial-backup" ? parsed.state : parsed;
+      if (!restored || typeof restored !== "object" || Array.isArray(restored)) {
+        throw new Error("This file does not contain a Dial backup.");
+      }
+      if (!window.confirm("Restore this backup? Your current Dial data will be replaced.")) return;
+
+      running = false;
+      clearTick();
+      clearTimerSnapshot();
+      pendingCompletion = null;
+      activeTodoId = null;
+      editingTodoId = null;
+      state = normalizeState(restored);
+      mode = isValidMode(state.lastMode) ? state.lastMode : "focus";
+      totalDuration = durationFor(mode);
+      remaining = totalDuration;
+      endTime = null;
+      sessionStart = null;
+      el.taskInput.value = "";
+      el.taskCategoryInput.value = "";
+      el.completionSheet.hidden = true;
+      saveState(state);
+      applyTheme();
+      applyAccent();
+      renderAll();
+      updateFocusGuard();
+      showStatusToast("Backup restored");
+      announce("Dial backup restored.");
+    } catch (error) {
+      showStatusToast(error && error.message ? error.message : "Could not restore that backup");
+    } finally {
+      el.importBackupFile.value = "";
+    }
   }
 
   /* ---------------- Rendering ---------------- */
@@ -865,15 +1123,20 @@
   }
 
   let rewardToastHandle = null;
-  function showRewardToast(reward) {
-    if (!reward) return;
-    el.rewardToastText.textContent = `Level ${reward.level} reached · ${reward.label} finish unlocked`;
+  function showStatusToast(message) {
+    if (!message) return;
+    el.rewardToastText.textContent = message;
     el.rewardToast.hidden = false;
     if (rewardToastHandle) clearTimeout(rewardToastHandle);
     rewardToastHandle = window.setTimeout(() => {
       el.rewardToast.hidden = true;
       rewardToastHandle = null;
     }, 4500);
+  }
+
+  function showRewardToast(reward) {
+    if (!reward) return;
+    showStatusToast(`Level ${reward.level} reached · ${reward.label} finish unlocked`);
   }
 
   function renderAll() {
@@ -886,6 +1149,116 @@
     renderSuggestions();
     renderStatsPanel();
     renderSettings();
+  }
+
+  /* ---------------- End-of-block review ---------------- */
+  function getSession(id) {
+    return state.sessions.find((session) => session.id === id) || null;
+  }
+
+  function openCompletionReview(review) {
+    pendingCompletion = review;
+    el.completionTask.textContent = review.task;
+    el.completionTiming.textContent = `Estimated ${formatMinutes(review.estimatedMinutes)} · ${formatMinutes(review.blockMinutes)} focus block logged`;
+    el.completionCategory.value = review.category || "";
+    el.completionNote.value = "";
+    el.completionSheet.hidden = false;
+    queueMicrotask(() => el.completionDone.focus());
+  }
+
+  function saveCompletionMeta(outcome) {
+    if (!pendingCompletion) return null;
+    const entry = getSession(pendingCompletion.sessionId);
+    const category = cleanCategory(el.completionCategory.value);
+    const note = el.completionNote.value.trim().slice(0, 240);
+    if (entry) {
+      entry.outcome = outcome;
+      entry.category = category;
+      entry.note = note;
+    }
+    const todo = pendingCompletion.todoId
+      ? state.todos.find((item) => item.id === pendingCompletion.todoId)
+      : null;
+    if (todo) todo.category = category;
+    return { entry, todo, category };
+  }
+
+  function ensureCompletionTodo(meta) {
+    if (meta.todo) return meta.todo;
+    const todo = addTodo(
+      pendingCompletion.task,
+      pendingCompletion.estimatedMinutes,
+      meta.category,
+      pendingCompletion.blockSeconds
+    );
+    pendingCompletion.todoId = todo && todo.id;
+    return todo;
+  }
+
+  function closeCompletionReview() {
+    el.completionSheet.hidden = true;
+    el.completionNote.value = "";
+  }
+
+  function finishTaskFromReview() {
+    if (!pendingCompletion) return;
+    const review = pendingCompletion;
+    const meta = saveCompletionMeta("done");
+    const actualSeconds = meta.todo
+      ? Number(meta.todo.actualSeconds) || review.blockSeconds
+      : review.blockSeconds;
+    if (meta.entry) {
+      meta.entry.estimatedMinutes = meta.todo ? meta.todo.minutes : review.estimatedMinutes;
+      meta.entry.actualMinutes = Math.round((actualSeconds / 60) * 10) / 10;
+    }
+    if (meta.todo) state.todos = state.todos.filter((item) => item.id !== meta.todo.id);
+    activeTodoId = null;
+    el.taskInput.value = "";
+    el.taskCategoryInput.value = "";
+    closeCompletionReview();
+    pendingCompletion = null;
+    saveState(state);
+    setMode(review.nextMode, { force: true });
+    showRewardToast(review.unlockedReward);
+    announce(`Task marked done. ${MODE_LABELS[review.nextMode]} is ready.`);
+    autoStartNext();
+  }
+
+  function continueTaskFromReview(minutes) {
+    if (!pendingCompletion) return;
+    const meta = saveCompletionMeta("continued");
+    const todo = ensureCompletionTodo(meta);
+    if (!todo) return;
+    const task = pendingCompletion.task;
+    const category = meta.category;
+    state.customMinutes = clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
+    activeTodoId = todo.id;
+    closeCompletionReview();
+    pendingCompletion = null;
+    saveState(state);
+    setMode("custom", { force: true, keepActiveTodo: true });
+    el.taskInput.value = task;
+    el.taskCategoryInput.value = category;
+    saveTimerSnapshot();
+    start();
+    announce(`Continuing ${task} for ${state.customMinutes} minutes.`);
+  }
+
+  function queueTaskFromReview() {
+    if (!pendingCompletion) return;
+    const review = pendingCompletion;
+    const meta = saveCompletionMeta("queued");
+    ensureCompletionTodo(meta);
+    activeTodoId = null;
+    el.taskInput.value = "";
+    el.taskCategoryInput.value = "";
+    closeCompletionReview();
+    pendingCompletion = null;
+    saveState(state);
+    setMode(review.nextMode, { force: true });
+    showRewardToast(review.unlockedReward);
+    announce(`Task returned to the queue. ${MODE_LABELS[review.nextMode]} is ready.`);
+    autoStartNext();
   }
 
   /* ---------------- Timer engine ---------------- */
@@ -903,6 +1276,7 @@
     saveState(state);
     clearTimerSnapshot();
     renderAll();
+    updateFocusGuard();
   }
 
   function setCustomMinutes(newMinutes) {
@@ -948,6 +1322,7 @@
     renderModeButtons();
     renderTodos();
     saveTimerSnapshot();
+    updateFocusGuard();
   }
 
   function pause() {
@@ -958,12 +1333,13 @@
     renderTimer();
     renderModeButtons();
     saveTimerSnapshot();
+    updateFocusGuard();
   }
 
   function reset() {
     running = false;
     clearTick();
-    releaseActiveTodo(elapsedSeconds());
+    releaseActiveTodo(elapsedSeconds(), false);
     remaining = totalDuration;
     endTime = null;
     sessionStart = null;
@@ -972,6 +1348,7 @@
     renderTimer();
     renderModeButtons();
     renderTodos();
+    updateFocusGuard();
   }
 
   function ensureTodayFresh() {
@@ -987,14 +1364,19 @@
     clearTick();
     playAlarm();
     clearTimerSnapshot();
+    updateFocusGuard();
 
     const wasWork = mode === "focus" || mode === "custom";
     const startedAt = sessionStart || new Date();
     const finishedTodoId = activeTodoId;
     const sessionMinutes = Math.round(totalDuration / 60);
-    releaseActiveTodo(totalDuration);
+    sessionStart = null;
+    endTime = null;
 
     if (wasWork) {
+      /* The timer proves a block elapsed, not that the task is finished. Keep
+         the linked task attached until the user answers the review sheet. */
+      releaseActiveTodo(totalDuration, false);
       ensureTodayFresh();
       if (mode === "focus") {
         state.currentStreak = nextStreak(state.lastSessionDate, state.currentStreak, todayStr());
@@ -1011,16 +1393,13 @@
       state.xp = applied.xp;
       state.level = applied.level;
 
-      let taskName = null;
-      if (finishedTodoId) {
-        const todo = state.todos.find((t) => t.id === finishedTodoId);
-        if (todo) {
-          taskName = todo.text;
-          state.todos = state.todos.filter((t) => t.id !== finishedTodoId);
-        }
-      }
+      const todo = finishedTodoId ? state.todos.find((t) => t.id === finishedTodoId) : null;
+      let taskName = todo ? todo.text : null;
       if (!taskName) taskName = el.taskInput.value.trim().slice(0, 60);
-      addLogEntry(taskName, xpEarned, sessionMinutes, mode);
+      if (!taskName) taskName = "Untitled focus session";
+      const category = todo ? todo.category : cleanCategory(el.taskCategoryInput.value);
+      const estimate = todo ? todo.minutes : sessionMinutes;
+      const entry = addLogEntry(taskName, xpEarned, sessionMinutes, mode, category);
 
       state.badges = evaluateBadges(state.badges, {
         totalSessions: state.totalSessions,
@@ -1030,23 +1409,28 @@
         startHour: startedAt.getHours(),
       });
 
-      el.taskInput.value = "";
-
       const unlockedReward = ACCENT_REWARDS.find(
         (reward) => reward.level > previousLevel && reward.level <= state.level
       );
       const nextMode = nextModeAfterWork(mode, state.focusSessions);
-      const label = finishedTodoId ? "Task" : "Focus session";
       saveState(state);
       renderAll();
-      announce(`${label} complete. ${xpEarned} XP earned. ${MODE_LABELS[nextMode]} starting.`);
+      announce(`Focus block complete. ${xpEarned} XP earned. Choose whether the task is done or needs more time.`);
       notifySessionEnd(
-        `${label} complete · +${xpEarned} XP`,
-        `${taskName || "Focus"} — ${MODE_LABELS[nextMode].toLowerCase()} up next.`
+        `Focus block complete · +${xpEarned} XP`,
+        `${taskName} — is the task finished?`
       );
-      setMode(nextMode, { force: true });
-      showRewardToast(unlockedReward);
-      autoStartNext();
+      openCompletionReview({
+        sessionId: entry.id,
+        todoId: todo && todo.id,
+        task: taskName,
+        category,
+        estimatedMinutes: estimate,
+        blockMinutes: sessionMinutes,
+        blockSeconds: totalDuration,
+        nextMode,
+        unlockedReward,
+      });
     } else {
       const finishedLabel = MODE_LABELS[mode];
       saveState(state);
@@ -1080,8 +1464,9 @@
 
   el.todoForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    addTodo(el.todoInput.value, el.todoMinutesInput.value);
+    addTodo(el.todoInput.value, el.todoMinutesInput.value, el.todoCategoryInput.value);
     el.todoInput.value = "";
+    el.todoCategoryInput.value = "";
     el.todoInput.focus();
   });
 
@@ -1126,6 +1511,26 @@
     requestNotificationPermission();
   });
 
+  el.setFocusGuard.addEventListener("change", () => {
+    updateSetting("focusGuard", el.setFocusGuard.checked);
+  });
+
+  el.setBlockedApps.addEventListener("change", () => {
+    updateSetting("blockedApps", el.setBlockedApps.value);
+  });
+
+  el.exportBackup.addEventListener("click", exportBackup);
+  el.exportCsv.addEventListener("click", exportSessionsCsv);
+  el.importBackup.addEventListener("click", () => el.importBackupFile.click());
+  el.importBackupFile.addEventListener("change", () => restoreBackup(el.importBackupFile.files[0]));
+
+  el.completionDone.addEventListener("click", finishTaskFromReview);
+  el.completionContinue.addEventListener("click", () => continueTaskFromReview(5));
+  el.completionAnother.addEventListener("click", () => {
+    if (pendingCompletion) continueTaskFromReview(pendingCompletion.blockMinutes);
+  });
+  el.completionQueue.addEventListener("click", queueTaskFromReview);
+
   if (shell && shell.onCommand) {
     shell.onCommand((action) => {
       if (action === "toggle") running ? pause() : start();
@@ -1136,6 +1541,13 @@
   el.taskInput.addEventListener("input", () => {
     if (el.taskInput.value.length > 60) {
       el.taskInput.value = el.taskInput.value.slice(0, 60);
+    }
+    if (remaining !== totalDuration || running) saveTimerSnapshot();
+  });
+
+  el.taskCategoryInput.addEventListener("input", () => {
+    if (el.taskCategoryInput.value.length > 30) {
+      el.taskCategoryInput.value = el.taskCategoryInput.value.slice(0, 30);
     }
     if (remaining !== totalDuration || running) saveTimerSnapshot();
   });
@@ -1160,4 +1572,5 @@
   ensureTodayFresh();
   saveState(state);
   renderAll();
+  updateFocusGuard();
 })();

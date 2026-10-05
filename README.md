@@ -27,9 +27,15 @@ the app is fully functional offline with system-font fallbacks if there's no net
   default) plus Custom, a one-off duration for small errands. Every 4th completed focus session
   triggers a long break; Custom sessions always lead to a short break and do not change that
   cadence. Mode can only be changed while the timer is paused or stopped.
-- **Current focus + Next up**: each queued task carries an estimated duration and an optional
-  category. Hitting ▶ moves it into Current focus, loads its estimate as a Custom session, and
-  starts it. Time actually spent accumulates across blocks and partial resets.
+- **Current focus + Next up**: each queued task carries an estimated duration, optional category,
+  and optional deadline. Plan groups the queue into Overdue, Due today, Upcoming, and No deadline.
+  Hitting ▶ moves a task into Current focus, loads its estimate as a Custom session, and starts it.
+  Time actually spent accumulates across blocks and appears beside the deadline and estimate.
+- **Task-linked sessions**: every block started from a planned task stores that task's stable ID and
+  deadline snapshot automatically. Continue, Another block, and Return to queue preserve the link;
+  an ad-hoc block marked Done stays unassigned, while continuing or queuing it promotes it to a task
+  and links that first block. Completed tasks leave the queue while their linked focus history remains
+  available in Insights and JSON/CSV exports.
 - **End-of-block decision**: an elapsed timer logs a focus block but does not pretend the task is
   finished. Dial asks whether it is Done, needs another same-length block, needs five more minutes,
   or should return to the queue. A quick category and reflection note can be added at that point.

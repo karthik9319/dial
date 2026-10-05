@@ -30,6 +30,10 @@ const {
   WORKSHOP_REWARDS,
   MAX_LOGGED_SESSIONS,
   MAX_TODOS,
+  normalizeDueDate,
+  deadlineInfo,
+  sortTodosByDeadline,
+  sessionTaskLink,
 } = require("../logic.js");
 
 /* ---------------- XP / levels ---------------- */
@@ -247,6 +251,53 @@ test("capTodos trims the list to the retention cap, keeping the newest entries",
 test("capTodos leaves a short list untouched", () => {
   const todos = [{ text: "a" }, { text: "b" }];
   assert.equal(capTodos(todos).length, 2);
+});
+
+/* ---------- Task deadlines and session links ---------- */
+
+test("normalizeDueDate accepts real calendar dates and rejects malformed ones", () => {
+  assert.equal(normalizeDueDate("2026-10-05"), "2026-10-05");
+  assert.equal(normalizeDueDate(" 2026-10-05 "), "2026-10-05");
+  assert.equal(normalizeDueDate("2026-02-30"), "");
+  assert.equal(normalizeDueDate("05-10-2026"), "");
+  assert.equal(normalizeDueDate(null), "");
+});
+
+test("deadlineInfo distinguishes overdue, today, tomorrow, upcoming, and no deadline", () => {
+  assert.equal(deadlineInfo("2026-10-04", "2026-10-05").status, "overdue");
+  assert.equal(deadlineInfo("2026-10-05", "2026-10-05").status, "today");
+  assert.equal(deadlineInfo("2026-10-06", "2026-10-05").status, "tomorrow");
+  assert.equal(deadlineInfo("2026-10-12", "2026-10-05").status, "upcoming");
+  assert.equal(deadlineInfo("", "2026-10-05").status, "none");
+});
+
+test("sortTodosByDeadline prioritizes earliest deadlines and leaves the source untouched", () => {
+  const todos = [
+    { id: "none", dueDate: "" },
+    { id: "later", dueDate: "2026-10-12" },
+    { id: "overdue", dueDate: "2026-10-04" },
+    { id: "today", dueDate: "2026-10-05" },
+  ];
+  assert.deepEqual(sortTodosByDeadline(todos, "2026-10-05").map((todo) => todo.id), [
+    "overdue", "today", "later", "none",
+  ]);
+  assert.deepEqual(todos.map((todo) => todo.id), ["none", "later", "overdue", "today"]);
+});
+
+test("sortTodosByDeadline preserves queue order for equal deadlines", () => {
+  const todos = [
+    { id: "first", dueDate: "2026-10-07" },
+    { id: "second", dueDate: "2026-10-07" },
+  ];
+  assert.deepEqual(sortTodosByDeadline(todos, "2026-10-05").map((todo) => todo.id), ["first", "second"]);
+});
+
+test("sessionTaskLink copies a stable task id and normalized deadline", () => {
+  assert.deepEqual(sessionTaskLink({ id: "task-42", dueDate: "2026-10-09" }), {
+    taskId: "task-42",
+    taskDueDate: "2026-10-09",
+  });
+  assert.deepEqual(sessionTaskLink(null), { taskId: null, taskDueDate: "" });
 });
 
 /* ---------- Task autosuggest ---------- */

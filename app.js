@@ -11,6 +11,10 @@
     DIAL_FACE_REWARDS,
     WORKSHOP_REWARDS,
     todayStr,
+    normalizeDueDate,
+    deadlineInfo,
+    sortTodosByDeadline,
+    sessionTaskLink,
     xpForLevel,
     applyXp,
     focusSessionXp,
@@ -103,6 +107,7 @@
       category: typeof todo.category === "string" ? todo.category.trim().slice(0, 30) : "",
       minutes: clampMinutes(todo.minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES),
       actualSeconds: Math.max(0, Number(todo.actualSeconds) || 0),
+      dueDate: normalizeDueDate(todo.dueDate),
       createdAt: todo.createdAt || new Date().toISOString(),
     }));
     state.customMinutes = clampMinutes(state.customMinutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
@@ -265,6 +270,7 @@
     todoInput: document.getElementById("todoInput"),
     todoMinutesInput: document.getElementById("todoMinutesInput"),
     todoCategoryInput: document.getElementById("todoCategoryInput"),
+    todoDueDateInput: document.getElementById("todoDueDateInput"),
     todoList: document.getElementById("todoList"),
     onboarding: document.getElementById("onboarding"),
     onboardingCta: document.getElementById("onboardingCta"),
@@ -307,6 +313,7 @@
     focusNextTask: document.getElementById("focusNextTask"),
     focusNextMeta: document.getElementById("focusNextMeta"),
     focusNextStart: document.getElementById("focusNextStart"),
+    currentFocusMeta: document.getElementById("currentFocusMeta"),
     setFocus: document.getElementById("setFocus"),
     setShort: document.getElementById("setShort"),
     setLong: document.getElementById("setLong"),
@@ -578,7 +585,7 @@
     return String(category || "").trim().slice(0, 30);
   }
 
-  function addTodo(text, minutes, category, actualSeconds) {
+  function addTodo(text, minutes, category, actualSeconds, dueDate) {
     const trimmed = (text || "").trim().slice(0, 60);
     if (!trimmed) return null;
     const todo = {
@@ -587,6 +594,7 @@
       category: cleanCategory(category),
       minutes: clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES),
       actualSeconds: Math.max(0, Number(actualSeconds) || 0),
+      dueDate: normalizeDueDate(dueDate),
       createdAt: new Date().toISOString(),
     };
     state.todos.unshift(todo);
@@ -616,13 +624,14 @@
     renderTodos();
   }
 
-  function updateTodo(id, text, minutes, category) {
+  function updateTodo(id, text, minutes, category, dueDate) {
     const todo = state.todos.find((t) => t.id === id);
     if (!todo) return;
     const trimmed = (text || "").trim().slice(0, 60);
     if (trimmed) todo.text = trimmed;
     todo.category = cleanCategory(category);
     todo.minutes = clampMinutes(minutes, CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES);
+    todo.dueDate = normalizeDueDate(dueDate);
     editingTodoId = null;
     saveState(state);
     renderTodos();
@@ -640,6 +649,7 @@
     el.taskInput.value = todo.text;
     el.taskCategoryInput.value = todo.category || "";
     saveTimerSnapshot();
+    renderCurrentFocusContext();
     selectTab("paneFocus");
     start();
   }
@@ -662,12 +672,52 @@
     return Math.max(0, totalDuration - Math.max(0, remaining));
   }
 
+  function orderedTodos() {
+    return sortTodosByDeadline(state.todos, todayStr());
+  }
+
+  function shortDate(dateKey) {
+    const [year, month, day] = dateKey.split("-").map(Number);
+    const options = { month: "short", day: "numeric" };
+    if (year !== new Date().getFullYear()) options.year = "numeric";
+    return new Date(year, month - 1, day).toLocaleDateString(undefined, options);
+  }
+
+  function deadlineLabel(dueDate) {
+    const info = deadlineInfo(dueDate, todayStr());
+    if (info.status === "overdue") return `Overdue · ${shortDate(info.date)}`;
+    if (info.status === "today") return "Due today";
+    if (info.status === "tomorrow") return "Due tomorrow";
+    if (info.status === "upcoming") return `Due ${shortDate(info.date)}`;
+    return "";
+  }
+
+  function renderCurrentFocusContext() {
+    const todo = state.todos.find((item) => item.id === activeTodoId);
+    el.currentFocusMeta.hidden = !todo;
+    if (!todo) {
+      el.currentFocusMeta.textContent = "";
+      el.currentFocusMeta.classList.remove("is-overdue");
+      return;
+    }
+    const spent = Math.round((Number(todo.actualSeconds) || 0) / 60);
+    el.currentFocusMeta.textContent = [
+      deadlineLabel(todo.dueDate),
+      `${formatMinutes(spent)} spent of ${formatMinutes(todo.minutes)} estimated`,
+    ].filter(Boolean).join(" · ");
+    el.currentFocusMeta.classList.toggle(
+      "is-overdue",
+      deadlineInfo(todo.dueDate, todayStr()).status === "overdue"
+    );
+  }
+
   function renderTodos() {
     el.todoList.innerHTML = "";
     const isFirstRun = !state.todos.length && !state.sessions.length;
     el.onboarding.hidden = !isFirstRun;
     el.queueCount.textContent = `${state.todos.length} queued`;
     renderFocusNext();
+    renderCurrentFocusContext();
 
     if (!state.todos.length) {
       if (isFirstRun) return;
@@ -678,7 +728,19 @@
       return;
     }
 
-    state.todos.forEach((todo) => {
+    let previousGroup = "";
+    orderedTodos().forEach((todo) => {
+      const status = deadlineInfo(todo.dueDate, todayStr()).status;
+      const group = status === "overdue" ? "Overdue"
+        : status === "today" ? "Due today"
+          : status === "none" ? "No deadline" : "Upcoming";
+      if (group !== previousGroup) {
+        const label = document.createElement("div");
+        label.className = `todo-group-label${status === "overdue" ? " is-overdue" : ""}`;
+        label.textContent = group;
+        el.todoList.appendChild(label);
+        previousGroup = group;
+      }
       if (todo.id === editingTodoId) {
         el.todoList.appendChild(renderTodoEditRow(todo));
         return;
@@ -701,7 +763,9 @@
       text.textContent = todo.text;
 
       const spentMinutes = Math.round((todo.actualSeconds || 0) / 60);
-      const minutes = document.createElement("div");
+      const meta = document.createElement("div");
+      meta.className = "todo-item__meta";
+      const minutes = document.createElement("span");
       minutes.className = "todo-item__minutes";
       if (todo.actualSeconds) {
         minutes.textContent = `${todo.category ? `${todo.category} · ` : ""}est ${todo.minutes}m · spent ${formatMinutes(spentMinutes)}`;
@@ -710,8 +774,16 @@
         minutes.textContent = `${todo.category ? `${todo.category} · ` : ""}est ${todo.minutes}m`;
       }
 
+      meta.appendChild(minutes);
+      const due = deadlineLabel(todo.dueDate);
+      if (due) {
+        const deadline = document.createElement("span");
+        deadline.className = `todo-item__deadline is-${status}`;
+        deadline.textContent = due;
+        meta.appendChild(deadline);
+      }
       main.appendChild(text);
-      main.appendChild(minutes);
+      main.appendChild(meta);
 
       const play = document.createElement("button");
       play.type = "button";
@@ -747,7 +819,7 @@
   }
 
   function renderFocusNext() {
-    const todo = state.todos.find((item) => item.id !== activeTodoId);
+    const todo = orderedTodos().find((item) => item.id !== activeTodoId);
     if (!todo) {
       el.focusNextTask.textContent = "Your queue is clear";
       el.focusNextMeta.textContent = "Plan your next focus block";
@@ -757,7 +829,8 @@
       return;
     }
     el.focusNextTask.textContent = todo.text;
-    el.focusNextMeta.textContent = `${todo.category ? `${todo.category} · ` : ""}${todo.minutes} min estimate`;
+    el.focusNextMeta.textContent = [todo.category, `${todo.minutes} min estimate`, deadlineLabel(todo.dueDate)]
+      .filter(Boolean).join(" · ");
     el.focusNextStart.textContent = "▶";
     el.focusNextStart.setAttribute("aria-label", `Start ${todo.text}`);
     el.focusNextStart.disabled = running;
@@ -792,6 +865,12 @@
     category.setAttribute("placeholder", "Category");
     category.setAttribute("list", "categorySuggestions");
 
+    const deadline = document.createElement("input");
+    deadline.type = "date";
+    deadline.className = "todo-item__edit-deadline";
+    deadline.value = todo.dueDate || "";
+    deadline.setAttribute("aria-label", "Deadline");
+
     const save = document.createElement("button");
     save.type = "submit";
     save.className = "todo-item__save";
@@ -807,7 +886,7 @@
 
     row.addEventListener("submit", (e) => {
       e.preventDefault();
-      updateTodo(todo.id, text.value, minutes.value, category.value);
+      updateTodo(todo.id, text.value, minutes.value, category.value, deadline.value);
     });
     row.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
@@ -818,6 +897,7 @@
 
     row.appendChild(text);
     row.appendChild(category);
+    row.appendChild(deadline);
     row.appendChild(minutes);
     row.appendChild(save);
     row.appendChild(cancel);
@@ -858,7 +938,7 @@
   }
 
   /* ---------------- Session log ---------------- */
-  function addLogEntry(task, xpEarned, minutes, sessionMode, category) {
+  function addLogEntry(task, xpEarned, minutes, sessionMode, category, todo) {
     const entry = {
       id: makeId(),
       task: task || "Untitled focus session",
@@ -868,6 +948,7 @@
       mode: sessionMode,
       category: cleanCategory(category),
       outcome: "block",
+      ...sessionTaskLink(todo),
     };
     state.sessions.unshift(entry);
     state.sessions = capSessions(state.sessions);
@@ -906,6 +987,8 @@
       });
       const details = [];
       if (entry.category) details.push(entry.category);
+      if (entry.taskId) details.push("linked task");
+      if (entry.taskDueDate) details.push(deadlineLabel(entry.taskDueDate));
       if (entry.outcome === "done" && Number.isFinite(Number(entry.actualMinutes))) {
         details.push(`est ${formatMinutes(entry.estimatedMinutes)} / actual ${formatMinutes(entry.actualMinutes)}`);
       } else if (entry.outcome === "queued") {
@@ -1239,7 +1322,7 @@
   function exportBackup() {
     const payload = {
       format: "dial-backup",
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       state,
     };
@@ -1256,12 +1339,14 @@
 
   function exportSessionsCsv() {
     const columns = [
-      "time", "task", "category", "block_minutes", "outcome",
+      "time", "task", "task_id", "task_due_date", "category", "block_minutes", "outcome",
       "estimated_minutes", "actual_minutes", "xp", "note",
     ];
     const rows = state.sessions.map((session) => [
       session.time,
       session.task,
+      session.taskId,
+      session.taskDueDate,
       session.category,
       session.minutes,
       session.outcome,
@@ -1414,7 +1499,11 @@
   function openCompletionReview(review) {
     pendingCompletion = review;
     el.completionTask.textContent = review.task;
-    el.completionTiming.textContent = `Estimated ${formatMinutes(review.estimatedMinutes)} · ${formatMinutes(review.blockMinutes)} focus block logged`;
+    el.completionTiming.textContent = [
+      `Estimated ${formatMinutes(review.estimatedMinutes)}`,
+      `${formatMinutes(review.blockMinutes)} focus block logged`,
+      deadlineLabel(review.dueDate),
+    ].filter(Boolean).join(" · ");
     el.completionCategory.value = review.category || "";
     el.completionNote.value = "";
     el.completionSheet.hidden = false;
@@ -1444,9 +1533,12 @@
       pendingCompletion.task,
       pendingCompletion.estimatedMinutes,
       meta.category,
-      pendingCompletion.blockSeconds
+      pendingCompletion.blockSeconds,
+      pendingCompletion.dueDate
     );
     pendingCompletion.todoId = todo && todo.id;
+    const entry = getSession(pendingCompletion.sessionId);
+    if (entry && todo) Object.assign(entry, sessionTaskLink(todo));
     return todo;
   }
 
@@ -1481,6 +1573,7 @@
 
   function continueTaskFromReview(minutes) {
     if (!pendingCompletion) return;
+    const review = pendingCompletion;
     const meta = saveCompletionMeta("continued");
     const todo = ensureCompletionTodo(meta);
     if (!todo) return;
@@ -1658,7 +1751,7 @@
       if (!taskName) taskName = "Untitled focus session";
       const category = todo ? todo.category : cleanCategory(el.taskCategoryInput.value);
       const estimate = todo ? todo.minutes : sessionMinutes;
-      const entry = addLogEntry(taskName, xpEarned, sessionMinutes, mode, category);
+      const entry = addLogEntry(taskName, xpEarned, sessionMinutes, mode, category, todo);
 
       state.badges = evaluateBadges(state.badges, {
         totalSessions: state.totalSessions,
@@ -1682,6 +1775,7 @@
         todoId: todo && todo.id,
         task: taskName,
         category,
+        dueDate: todo ? todo.dueDate : "",
         estimatedMinutes: estimate,
         blockMinutes: sessionMinutes,
         blockSeconds: totalDuration,
@@ -1721,9 +1815,16 @@
 
   el.todoForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    addTodo(el.todoInput.value, el.todoMinutesInput.value, el.todoCategoryInput.value);
+    addTodo(
+      el.todoInput.value,
+      el.todoMinutesInput.value,
+      el.todoCategoryInput.value,
+      0,
+      el.todoDueDateInput.value
+    );
     el.todoInput.value = "";
     el.todoCategoryInput.value = "";
+    el.todoDueDateInput.value = "";
     el.todoInput.focus();
   });
 
@@ -1735,7 +1836,7 @@
 
   el.openCollection.addEventListener("click", () => selectTab("paneCollection"));
   el.focusNextStart.addEventListener("click", () => {
-    const next = state.todos.find((item) => item.id !== activeTodoId);
+    const next = orderedTodos().find((item) => item.id !== activeTodoId);
     if (next) startTodo(next.id);
     else {
       selectTab("panePlan");

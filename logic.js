@@ -92,6 +92,51 @@
     return `${y}-${m}-${day}`;
   }
 
+  /** Keeps only real local calendar dates in the storage-friendly YYYY-MM-DD form. */
+  function normalizeDueDate(value) {
+    const key = typeof value === "string" ? value.trim() : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return "";
+    const parsed = parseDay(key);
+    return !isNaN(parsed.getTime()) && todayStr(parsed) === key ? key : "";
+  }
+
+  /** Returns the task's deadline bucket relative to `today`. */
+  function deadlineInfo(dueDate, today) {
+    const date = normalizeDueDate(dueDate);
+    if (!date) return { date: "", status: "none", days: null };
+    const base = normalizeDueDate(today) || todayStr();
+    const days = daysBetween(base, date);
+    let status = "upcoming";
+    if (days < 0) status = "overdue";
+    else if (days === 0) status = "today";
+    else if (days === 1) status = "tomorrow";
+    return { date, status, days };
+  }
+
+  /**
+   * Orders actionable deadlines first: overdue, today, upcoming, then tasks
+   * without a deadline. The input array is never mutated and equal deadlines
+   * retain their existing queue order.
+   */
+  function sortTodosByDeadline(todos, today) {
+    return (todos || []).map((todo, index) => {
+      const info = deadlineInfo(todo && todo.dueDate, today);
+      return { todo, index, due: info.date || "9999-12-31" };
+    }).sort((a, b) => a.due.localeCompare(b.due) || a.index - b.index)
+      .map((item) => item.todo);
+  }
+
+  /** Stable fields copied to every focus session launched from a planned task. */
+  function sessionTaskLink(todo) {
+    if (!todo || todo.id === null || todo.id === undefined || String(todo.id).trim() === "") {
+      return { taskId: null, taskDueDate: "" };
+    }
+    return {
+      taskId: String(todo.id),
+      taskDueDate: normalizeDueDate(todo.dueDate),
+    };
+  }
+
   function xpForLevel(level) {
     return Math.min(500, 100 + (level - 1) * 40);
   }
@@ -446,6 +491,10 @@
     MAX_LOGGED_SESSIONS,
     MAX_TODOS,
     todayStr,
+    normalizeDueDate,
+    deadlineInfo,
+    sortTodosByDeadline,
+    sessionTaskLink,
     xpForLevel,
     applyXp,
     streakBonus,

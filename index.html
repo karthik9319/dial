@@ -57,6 +57,7 @@
           <input id="taskCategoryInput" class="category-chip-input" type="text" maxlength="30" placeholder="+ Category" autocomplete="off" list="categorySuggestions" aria-label="Current focus category">
         </div>
         <input id="taskInput" class="task-input task-input--hero" type="text" maxlength="60" placeholder="What deserves your attention?" autocomplete="off" list="taskSuggestions">
+        <div class="active-focus__meta" id="currentFocusMeta" hidden></div>
       </div>
 
       <section class="dial-wrap">
@@ -117,7 +118,10 @@
           <input type="text" id="todoInput" class="todo-add__input" maxlength="60" placeholder="Add a task…" autocomplete="off" list="taskSuggestions">
           <input type="number" id="todoMinutesInput" class="todo-add__minutes" min="1" max="120" value="10" aria-label="Minutes">
           <button type="submit" class="todo-add__btn" aria-label="Add task">+</button>
-          <input type="text" id="todoCategoryInput" class="todo-add__category" maxlength="30" placeholder="Category (optional)" autocomplete="off" list="categorySuggestions" aria-label="Task category">
+          <div class="todo-add__details">
+            <input type="text" id="todoCategoryInput" class="todo-add__category" maxlength="30" placeholder="Category (optional)" autocomplete="off" list="categorySuggestions" aria-label="Task category">
+            <input type="date" id="todoDueDateInput" class="todo-add__deadline" aria-label="Task deadline">
+          </div>
         </form>
         <div class="todo-list" id="todoList"><p class="todo-empty" id="todoEmpty">No tasks yet. Add one above.</p></div>
       </section>
